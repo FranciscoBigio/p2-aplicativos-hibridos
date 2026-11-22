@@ -124,7 +124,7 @@ export default function Step2AttributesScreen() {
         ? classDetail.saving_throws.map((s) => s.index.toLowerCase())
         : [];
       const traits = Array.isArray(raceDetail?.traits)
-        ? raceDetail.traits.map((t) => t.name)
+        ? raceDetail.traits.map((t) => ({ index: t.index, name: t.name }))
         : [];
 
       await saveCharacter({

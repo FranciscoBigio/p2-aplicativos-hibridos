@@ -74,6 +74,19 @@ export async function fetchClassDetail(index) {
   return apiFetch(`/classes/${index}`);
 }
 
+export async function fetchClassLevels(classIndex) {
+  const data = await apiFetch(`/classes/${classIndex}/levels`);
+  return Array.isArray(data) ? data : [];
+}
+
+export async function fetchTraitDetail(index) {
+  return apiFetch(`/traits/${index}`);
+}
+
+export async function fetchFeatureDetail(index) {
+  return apiFetch(`/features/${index}`);
+}
+
 export async function fetchSpells() {
   const data = await apiFetch('/spells');
   return data.results || [];

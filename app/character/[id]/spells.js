@@ -36,7 +36,8 @@ import {
   rollDiceExpression,
 } from '../../../src/utils/dndRules';
 
-const SPELL_CIRCLES = [1, 2, 3];
+const BASE_SPELL_CIRCLES = [1, 2, 3];
+const ALL_SPELL_CIRCLES = [1, 2, 3, 4, 5, 6, 7, 8, 9];
 
 function doubleDiceExpression(expr) {
   return String(expr || '1d6').replace(
@@ -179,11 +180,18 @@ export default function CharacterSpellsScreen() {
     });
   }
 
+  const visibleCircles = useMemo(() => {
+    return ALL_SPELL_CIRCLES.filter(
+      (c) => BASE_SPELL_CIRCLES.includes(c) || (spellSlots[c]?.max || 0) > 0
+    );
+  }, [spellSlots]);
+
   async function handleRecoverAllSlots() {
     const resetSlots = {};
-    SPELL_CIRCLES.forEach((circle) => {
-      const current = spellSlots[circle] || { max: 0, used: 0 };
-      resetSlots[circle] = { max: current.max, used: 0 };
+    ALL_SPELL_CIRCLES.forEach((circle) => {
+      if (spellSlots[circle]) {
+        resetSlots[circle] = { max: spellSlots[circle].max, used: 0 };
+      }
     });
     await persistUpdate({ spellSlots: resetSlots });
   }
@@ -313,7 +321,7 @@ export default function CharacterSpellsScreen() {
           </View>
 
           <View style={styles.slotsList}>
-            {SPELL_CIRCLES.map((circle) => {
+            {visibleCircles.map((circle) => {
               const slot = spellSlots[circle] || { max: 0, used: 0 };
               const available = Math.max(0, slot.max - slot.used);
 
