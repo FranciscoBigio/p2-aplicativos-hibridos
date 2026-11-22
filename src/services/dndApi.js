@@ -79,6 +79,14 @@ export async function fetchSpells() {
   return data.results || [];
 }
 
+export async function fetchSpellsByClass(classIndex) {
+  if (!classIndex || classIndex === 'all') {
+    return fetchSpells();
+  }
+  const data = await apiFetch(`/classes/${classIndex}/spells`);
+  return data.results || [];
+}
+
 export async function fetchSpellDetail(index) {
   return apiFetch(`/spells/${index}`);
 }
