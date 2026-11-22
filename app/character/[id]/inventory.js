@@ -5,6 +5,9 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
+  Modal,
+  FlatList,
+  ActivityIndicator,
 } from 'react-native';
 import {
   useFocusEffect,
@@ -15,7 +18,13 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SPACING, RADIUS, FONT_SIZE } from '../../../src/theme/colors';
 import LoadingView from '../../../src/components/LoadingView';
+import CustomButton from '../../../src/components/CustomButton';
+import CustomInput from '../../../src/components/CustomInput';
 import { getCharacterById, updateCharacter } from '../../../src/services/storage';
+import {
+  fetchEquipment,
+  fetchEquipmentDetail,
+} from '../../../src/services/dndApi';
 
 const COIN_TYPES = [
   { key: 'gp', label: 'Ouro (PO)', color: COLORS.primaryLight },
@@ -31,6 +40,13 @@ export default function CharacterInventoryScreen() {
 
   const [character, setCharacter] = useState(null);
   const [loading, setLoading] = useState(true);
+
+  const [modalVisible, setModalVisible] = useState(false);
+  const [apiEquipment, setApiEquipment] = useState([]);
+  const [apiLoading, setApiLoading] = useState(false);
+  const [apiError, setApiError] = useState(null);
+  const [apiSearch, setApiSearch] = useState('');
+  const [addingIndex, setAddingIndex] = useState(null);
 
   const loadCharacter = useCallback(async () => {
     if (!characterId) {
@@ -70,11 +86,82 @@ export default function CharacterInventoryScreen() {
     Math.round((totalWeight / Math.max(1, maxCarryWeight)) * 100)
   );
 
+  const filteredApiEquipment = useMemo(() => {
+    const q = apiSearch.trim().toLowerCase();
+    if (!q) return apiEquipment;
+    return apiEquipment.filter(
+      (eq) =>
+        (eq.name || '').toLowerCase().includes(q) ||
+        (eq.index || '').toLowerCase().includes(q)
+    );
+  }, [apiEquipment, apiSearch]);
+
   async function persistUpdate(partial) {
     if (!character) return;
     const optimistic = { ...character, ...partial };
     setCharacter(optimistic);
     await updateCharacter(character.id, partial);
+  }
+
+  async function loadApiEquipment() {
+    setApiLoading(true);
+    setApiError(null);
+    try {
+      const list = await fetchEquipment();
+      setApiEquipment(list);
+    } catch (err) {
+      setApiError(err.message);
+    } finally {
+      setApiLoading(false);
+    }
+  }
+
+  function handleOpenModal() {
+    setModalVisible(true);
+    setApiSearch('');
+    if (apiEquipment.length === 0) {
+      loadApiEquipment();
+    }
+  }
+
+  async function handleAddApiItem(apiItem) {
+    if (addingIndex) return;
+    setAddingIndex(apiItem.index);
+    try {
+      const existing = inventory.find((it) => it.index === apiItem.index);
+      if (existing) {
+        const updated = inventory.map((it) =>
+          it.index === apiItem.index
+            ? { ...it, quantity: (Number(it.quantity) || 1) + 1 }
+            : it
+        );
+        await persistUpdate({ inventory: updated });
+      } else {
+        let weight = 0;
+        let category = 'Equipamento';
+        try {
+          const detail = await fetchEquipmentDetail(apiItem.index);
+          weight = Number(detail.weight) || 0;
+          category = detail.equipment_category?.name || 'Equipamento';
+        } catch {
+          // Mantém valores padrão se detalhe falhar momentaneamente
+        }
+
+        const newItem = {
+          id: `item_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
+          index: apiItem.index,
+          name: apiItem.name,
+          category,
+          weight,
+          quantity: 1,
+          equipped: false,
+        };
+        await persistUpdate({ inventory: [newItem, ...inventory] });
+      }
+      setModalVisible(false);
+    } finally {
+      setAddingIndex(null);
+    }
   }
 
   async function handleCoinDelta(coinKey, delta) {
@@ -122,171 +209,256 @@ export default function CharacterInventoryScreen() {
   }
 
   return (
-    <ScrollView
-      style={styles.container}
-      contentContainerStyle={styles.scrollContent}
-    >
-      <View style={styles.sectionCard}>
-        <View style={styles.sectionHeader}>
-          <Ionicons name="cash-outline" size={18} color={COLORS.primaryLight} />
-          <Text style={styles.sectionTitle}>Algibeira de Moedas</Text>
-        </View>
-        <View style={styles.coinsRow}>
-          {COIN_TYPES.map((coin) => (
-            <View key={coin.key} style={styles.coinCard}>
-              <Text style={[styles.coinLabel, { color: coin.color }]}>
-                {coin.label}
-              </Text>
-              <Text style={styles.coinValue}>{coins[coin.key] ?? 0}</Text>
-              <View style={styles.coinBtns}>
-                <TouchableOpacity
-                  style={styles.coinBtn}
-                  onPress={() => handleCoinDelta(coin.key, -1)}
-                >
-                  <Ionicons name="remove" size={15} color={COLORS.textPrimary} />
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.coinBtn}
-                  onPress={() => handleCoinDelta(coin.key, 1)}
-                >
-                  <Ionicons name="add" size={15} color={COLORS.textPrimary} />
-                </TouchableOpacity>
-              </View>
-            </View>
-          ))}
-        </View>
-      </View>
-
-      <View style={styles.sectionCard}>
-        <View style={styles.sectionHeader}>
-          <Ionicons name="barbell-outline" size={18} color={COLORS.primary} />
-          <Text style={styles.sectionTitle}>Capacidade de Carga</Text>
-          <Text style={styles.weightLabel}>
-            {totalWeight.toFixed(1)} / {maxCarryWeight} lb
-          </Text>
-        </View>
-        <View style={styles.carryTrack}>
-          <View
-            style={[
-              styles.carryFill,
-              {
-                width: `${carryPercent}%`,
-                backgroundColor:
-                  carryPercent >= 90 ? COLORS.danger : COLORS.primary,
-              },
-            ]}
-          />
-        </View>
-        <Text style={styles.carryHint}>
-          Calculado por Força ({strScore}) × 15 lb
-        </Text>
-      </View>
-
-      <View style={styles.sectionCard}>
-        <View style={styles.sectionHeader}>
-          <Ionicons name="bag-outline" size={18} color={COLORS.primary} />
-          <Text style={styles.sectionTitle}>
-            Mochila ({inventory.length} itens)
-          </Text>
-        </View>
-
-        {inventory.length === 0 ? (
-          <View style={styles.emptyWrap}>
-            <Ionicons name="bag-outline" size={38} color={COLORS.textMuted} />
-            <Text style={styles.emptyText}>
-              Sua mochila está vazia. Adicione equipamentos da API D&D 5e!
-            </Text>
+    <View style={styles.root}>
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={styles.scrollContent}
+      >
+        <View style={styles.sectionCard}>
+          <View style={styles.sectionHeader}>
+            <Ionicons name="cash-outline" size={18} color={COLORS.primaryLight} />
+            <Text style={styles.sectionTitle}>Algibeira de Moedas</Text>
           </View>
-        ) : (
-          <View style={styles.itemsList}>
-            {inventory.map((item) => (
-              <View key={item.id} style={styles.itemCard}>
-                <View style={styles.itemTop}>
-                  <View style={styles.itemInfo}>
-                    <Text style={styles.itemName}>{item.name}</Text>
-                    <Text style={styles.itemMeta}>
-                      {item.category || 'Equipamento'} • {item.weight || 0} lb un.
-                    </Text>
-                  </View>
-
+          <View style={styles.coinsRow}>
+            {COIN_TYPES.map((coin) => (
+              <View key={coin.key} style={styles.coinCard}>
+                <Text style={[styles.coinLabel, { color: coin.color }]}>
+                  {coin.label}
+                </Text>
+                <Text style={styles.coinValue}>{coins[coin.key] ?? 0}</Text>
+                <View style={styles.coinBtns}>
                   <TouchableOpacity
-                    style={[
-                      styles.equipBadge,
-                      item.equipped && styles.equipBadgeActive,
-                    ]}
-                    onPress={() => handleToggleEquipped(item.id)}
+                    style={styles.coinBtn}
+                    onPress={() => handleCoinDelta(coin.key, -1)}
                   >
                     <Ionicons
-                      name={
-                        item.equipped
-                          ? 'checkmark-circle'
-                          : 'ellipse-outline'
-                      }
-                      size={14}
-                      color={
-                        item.equipped ? COLORS.success : COLORS.textMuted
-                      }
+                      name="remove"
+                      size={15}
+                      color={COLORS.textPrimary}
                     />
-                    <Text
-                      style={[
-                        styles.equipText,
-                        item.equipped && styles.equipTextActive,
-                      ]}
-                    >
-                      {item.equipped ? 'Equipado' : 'Mochila'}
-                    </Text>
                   </TouchableOpacity>
-                </View>
-
-                <View style={styles.itemFooter}>
-                  <View style={styles.qtyControls}>
-                    <TouchableOpacity
-                      style={styles.qtyBtn}
-                      onPress={() => handleQuantityDelta(item.id, -1)}
-                    >
-                      <Ionicons
-                        name="remove"
-                        size={15}
-                        color={COLORS.textPrimary}
-                      />
-                    </TouchableOpacity>
-                    <Text style={styles.qtyValue}>x{item.quantity || 1}</Text>
-                    <TouchableOpacity
-                      style={styles.qtyBtn}
-                      onPress={() => handleQuantityDelta(item.id, 1)}
-                    >
-                      <Ionicons
-                        name="add"
-                        size={15}
-                        color={COLORS.textPrimary}
-                      />
-                    </TouchableOpacity>
-                  </View>
-
                   <TouchableOpacity
-                    style={styles.removeBtn}
-                    onPress={() => handleRemoveItem(item.id)}
+                    style={styles.coinBtn}
+                    onPress={() => handleCoinDelta(coin.key, 1)}
                   >
-                    <Ionicons
-                      name="trash-outline"
-                      size={16}
-                      color={COLORS.danger}
-                    />
+                    <Ionicons name="add" size={15} color={COLORS.textPrimary} />
                   </TouchableOpacity>
                 </View>
               </View>
             ))}
           </View>
-        )}
-      </View>
-    </ScrollView>
+        </View>
+
+        <View style={styles.sectionCard}>
+          <View style={styles.sectionHeader}>
+            <Ionicons name="barbell-outline" size={18} color={COLORS.primary} />
+            <Text style={styles.sectionTitle}>Capacidade de Carga</Text>
+            <Text style={styles.weightLabel}>
+              {totalWeight.toFixed(1)} / {maxCarryWeight} lb
+            </Text>
+          </View>
+          <View style={styles.carryTrack}>
+            <View
+              style={[
+                styles.carryFill,
+                {
+                  width: `${carryPercent}%`,
+                  backgroundColor:
+                    carryPercent >= 90 ? COLORS.danger : COLORS.primary,
+                },
+              ]}
+            />
+          </View>
+          <Text style={styles.carryHint}>
+            Calculado por Força ({strScore}) × 15 lb
+          </Text>
+        </View>
+
+        <CustomButton
+          title="Adicionar Equipamento da API D&D 5e"
+          icon="add-circle-outline"
+          onPress={handleOpenModal}
+        />
+
+        <View style={styles.sectionCard}>
+          <View style={styles.sectionHeader}>
+            <Ionicons name="bag-outline" size={18} color={COLORS.primary} />
+            <Text style={styles.sectionTitle}>
+              Mochila ({inventory.length} itens)
+            </Text>
+          </View>
+
+          {inventory.length === 0 ? (
+            <View style={styles.emptyWrap}>
+              <Ionicons name="bag-outline" size={38} color={COLORS.textMuted} />
+              <Text style={styles.emptyText}>
+                Sua mochila está vazia. Toque no botão acima para buscar itens na API D&D 5e!
+              </Text>
+            </View>
+          ) : (
+            <View style={styles.itemsList}>
+              {inventory.map((item) => (
+                <View key={item.id} style={styles.itemCard}>
+                  <View style={styles.itemTop}>
+                    <View style={styles.itemInfo}>
+                      <Text style={styles.itemName}>{item.name}</Text>
+                      <Text style={styles.itemMeta}>
+                        {item.category || 'Equipamento'} • {item.weight || 0} lb un.
+                      </Text>
+                    </View>
+
+                    <TouchableOpacity
+                      style={[
+                        styles.equipBadge,
+                        item.equipped && styles.equipBadgeActive,
+                      ]}
+                      onPress={() => handleToggleEquipped(item.id)}
+                    >
+                      <Ionicons
+                        name={
+                          item.equipped
+                            ? 'checkmark-circle'
+                            : 'ellipse-outline'
+                        }
+                        size={14}
+                        color={
+                          item.equipped ? COLORS.success : COLORS.textMuted
+                        }
+                      />
+                      <Text
+                        style={[
+                          styles.equipText,
+                          item.equipped && styles.equipTextActive,
+                        ]}
+                      >
+                        {item.equipped ? 'Equipado' : 'Mochila'}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  <View style={styles.itemFooter}>
+                    <View style={styles.qtyControls}>
+                      <TouchableOpacity
+                        style={styles.qtyBtn}
+                        onPress={() => handleQuantityDelta(item.id, -1)}
+                      >
+                        <Ionicons
+                          name="remove"
+                          size={15}
+                          color={COLORS.textPrimary}
+                        />
+                      </TouchableOpacity>
+                      <Text style={styles.qtyValue}>x{item.quantity || 1}</Text>
+                      <TouchableOpacity
+                        style={styles.qtyBtn}
+                        onPress={() => handleQuantityDelta(item.id, 1)}
+                      >
+                        <Ionicons
+                          name="add"
+                          size={15}
+                          color={COLORS.textPrimary}
+                        />
+                      </TouchableOpacity>
+                    </View>
+
+                    <TouchableOpacity
+                      style={styles.removeBtn}
+                      onPress={() => handleRemoveItem(item.id)}
+                    >
+                      <Ionicons
+                        name="trash-outline"
+                        size={16}
+                        color={COLORS.danger}
+                      />
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              ))}
+            </View>
+          )}
+        </View>
+      </ScrollView>
+
+      <Modal
+        visible={modalVisible}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Equipamentos D&D 5e</Text>
+              <TouchableOpacity
+                style={styles.modalCloseBtn}
+                onPress={() => setModalVisible(false)}
+              >
+                <Ionicons name="close" size={20} color={COLORS.textPrimary} />
+              </TouchableOpacity>
+            </View>
+
+            <CustomInput
+              value={apiSearch}
+              onChangeText={setApiSearch}
+              placeholder="Buscar arma, armadura ou item (ex: Longsword)..."
+              icon="search-outline"
+              showClear
+            />
+
+            {apiLoading ? (
+              <LoadingView message="Carregando equipamentos da API..." />
+            ) : apiError ? (
+              <LoadingView error={apiError} onRetry={loadApiEquipment} />
+            ) : (
+              <FlatList
+                data={filteredApiEquipment}
+                keyExtractor={(item) => item.index}
+                contentContainerStyle={styles.modalList}
+                ListEmptyComponent={
+                  <Text style={styles.modalEmptyText}>
+                    Nenhum equipamento encontrado para esta busca.
+                  </Text>
+                }
+                renderItem={({ item }) => {
+                  const isAdding = addingIndex === item.index;
+                  return (
+                    <View style={styles.apiRow}>
+                      <Text style={styles.apiItemName} numberOfLines={1}>
+                        {item.name}
+                      </Text>
+                      <TouchableOpacity
+                        style={styles.apiAddBtn}
+                        disabled={Boolean(addingIndex)}
+                        onPress={() => handleAddApiItem(item)}
+                      >
+                        {isAdding ? (
+                          <ActivityIndicator size="small" color={COLORS.white} />
+                        ) : (
+                          <>
+                            <Ionicons name="add" size={16} color={COLORS.white} />
+                            <Text style={styles.apiAddText}>Adicionar</Text>
+                          </>
+                        )}
+                      </TouchableOpacity>
+                    </View>
+                  );
+                }}
+              />
+            )}
+          </View>
+        </View>
+      </Modal>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  root: {
     flex: 1,
     backgroundColor: COLORS.background,
+  },
+  container: {
+    flex: 1,
   },
   scrollContent: {
     padding: SPACING.lg,
@@ -382,6 +554,7 @@ const styles = StyleSheet.create({
     color: COLORS.textSecondary,
     fontSize: FONT_SIZE.sm,
     textAlign: 'center',
+    lineHeight: 20,
   },
   itemsList: {
     gap: SPACING.sm,
@@ -471,5 +644,81 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.dangerMuted,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: COLORS.overlay,
+    justifyContent: 'flex-end',
+  },
+  modalCard: {
+    height: '82%',
+    backgroundColor: COLORS.background,
+    borderTopLeftRadius: RADIUS.xl,
+    borderTopRightRadius: RADIUS.xl,
+    borderWidth: 1,
+    borderColor: COLORS.borderLight,
+    padding: SPACING.lg,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: SPACING.md,
+  },
+  modalTitle: {
+    color: COLORS.textPrimary,
+    fontSize: FONT_SIZE.xl,
+    fontWeight: '800',
+  },
+  modalCloseBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: RADIUS.full,
+    backgroundColor: COLORS.card,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalList: {
+    gap: SPACING.xs + 2,
+    paddingBottom: SPACING.xl,
+  },
+  modalEmptyText: {
+    color: COLORS.textSecondary,
+    textAlign: 'center',
+    marginTop: SPACING.xl,
+  },
+  apiRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: COLORS.card,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: RADIUS.md,
+    paddingVertical: SPACING.sm + 2,
+    paddingHorizontal: SPACING.md,
+    gap: SPACING.sm,
+  },
+  apiItemName: {
+    flex: 1,
+    color: COLORS.textPrimary,
+    fontSize: FONT_SIZE.md,
+    fontWeight: '600',
+  },
+  apiAddBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: COLORS.primary,
+    borderRadius: RADIUS.sm,
+    paddingHorizontal: SPACING.sm + 4,
+    paddingVertical: 7,
+    minWidth: 94,
+    justifyContent: 'center',
+  },
+  apiAddText: {
+    color: COLORS.white,
+    fontSize: FONT_SIZE.xs,
+    fontWeight: '700',
   },
 });
