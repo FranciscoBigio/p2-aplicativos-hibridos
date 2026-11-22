@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import {
   View,
   Text,
@@ -6,7 +6,7 @@ import {
   ScrollView,
   TouchableOpacity,
   Modal,
-  FlatList,
+  SectionList,
   ActivityIndicator,
 } from 'react-native';
 import {
@@ -16,7 +16,13 @@ import {
   useRouter,
 } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { COLORS, SPACING, RADIUS, FONT_SIZE, LAYOUT } from '../../../src/theme/colors';
+import {
+  COLORS,
+  SPACING,
+  RADIUS,
+  FONT_SIZE,
+  LAYOUT,
+} from '../../../src/theme/colors';
 import LoadingView from '../../../src/components/LoadingView';
 import CustomButton from '../../../src/components/CustomButton';
 import CustomInput from '../../../src/components/CustomInput';
@@ -26,7 +32,10 @@ import {
   updateCharacter,
   addDiceRoll,
 } from '../../../src/services/storage';
-import { fetchSpells, fetchSpellDetail } from '../../../src/services/dndApi';
+import {
+  fetchSpellsByClass,
+  fetchSpellDetail,
+} from '../../../src/services/dndApi';
 import {
   calculateModifier,
   formatModifier,
@@ -39,11 +48,64 @@ import {
 const BASE_SPELL_CIRCLES = [1, 2, 3];
 const ALL_SPELL_CIRCLES = [1, 2, 3, 4, 5, 6, 7, 8, 9];
 
+const SPELLCASTER_CLASSES = [
+  { key: 'all', label: 'Todas' },
+  { key: 'bard', label: 'Bardo' },
+  { key: 'cleric', label: 'Clérigo' },
+  { key: 'druid', label: 'Druida' },
+  { key: 'sorcerer', label: 'Feiticeiro' },
+  { key: 'warlock', label: 'Bruxo' },
+  { key: 'wizard', label: 'Mago' },
+  { key: 'paladin', label: 'Paladino' },
+  { key: 'ranger', label: 'Patrulheiro' },
+];
+
+const SPELLCASTER_KEYS = new Set(
+  SPELLCASTER_CLASSES.filter((c) => c.key !== 'all').map((c) => c.key)
+);
+
+function getSpellLevelTitle(level) {
+  if (level === 0) return 'Truques (Nível 0)';
+  return `${level}º Círculo (Nível ${level})`;
+}
+
 function doubleDiceExpression(expr) {
   return String(expr || '1d6').replace(
     /^(\d+)d(\d+)/i,
     (_, qty, sides) => `${Number(qty) * 2}d${sides}`
   );
+}
+
+function groupSpellsByLevel(spellsList, collapsedMap = {}, forceExpand = false) {
+  const sorted = [...spellsList].sort((a, b) => {
+    const lvlDiff = (Number(a.level) || 0) - (Number(b.level) || 0);
+    if (lvlDiff !== 0) return lvlDiff;
+    return (a.name || '').localeCompare(b.name || '', 'pt-BR', {
+      sensitivity: 'base',
+    });
+  });
+
+  const grouped = new Map();
+  sorted.forEach((spell) => {
+    const lvl = Number(spell.level) || 0;
+    if (!grouped.has(lvl)) {
+      grouped.set(lvl, []);
+    }
+    grouped.get(lvl).push(spell);
+  });
+
+  return Array.from(grouped.entries())
+    .sort(([lvlA], [lvlB]) => lvlA - lvlB)
+    .map(([level, list]) => {
+      const isCollapsed = !forceExpand && Boolean(collapsedMap[level]);
+      return {
+        level,
+        title: getSpellLevelTitle(level),
+        totalCount: list.length,
+        isCollapsed,
+        data: isCollapsed ? [] : list,
+      };
+    });
 }
 
 export default function CharacterSpellsScreen() {
@@ -55,12 +117,20 @@ export default function CharacterSpellsScreen() {
   const [character, setCharacter] = useState(null);
   const [loading, setLoading] = useState(true);
 
+  // Recolher níveis nas magias já conhecidas
+  const [knownCollapsed, setKnownCollapsed] = useState({});
+
+  // Modal "Aprender Magia"
   const [modalVisible, setModalVisible] = useState(false);
+  const [modalSpellClass, setModalSpellClass] = useState('all');
+  const [modalCollapsed, setModalCollapsed] = useState({});
   const [apiSpells, setApiSpells] = useState([]);
   const [apiLoading, setApiLoading] = useState(false);
   const [apiError, setApiError] = useState(null);
   const [apiSearch, setApiSearch] = useState('');
   const [learningIndex, setLearningIndex] = useState(null);
+
+  // Modal de rolagem imediata
   const [activeRoll, setActiveRoll] = useState(null);
   const [lastRollConfig, setLastRollConfig] = useState(null);
 
@@ -116,6 +186,25 @@ export default function CharacterSpellsScreen() {
     }, [loadCharacter])
   );
 
+  const loadApiSpells = useCallback(async (classKey) => {
+    setApiLoading(true);
+    setApiError(null);
+    try {
+      const list = await fetchSpellsByClass(classKey);
+      setApiSpells(list);
+    } catch (err) {
+      setApiError(err.message);
+    } finally {
+      setApiLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (modalVisible) {
+      loadApiSpells(modalSpellClass);
+    }
+  }, [modalVisible, modalSpellClass, loadApiSpells]);
+
   const spells = character?.spells || [];
   const spellSlots = character?.spellSlots || {
     1: { max: 2, used: 0 },
@@ -128,13 +217,15 @@ export default function CharacterSpellsScreen() {
     [spells]
   );
 
-  const sortedSpells = useMemo(() => {
-    return [...spells].sort((a, b) => {
-      const lvlDiff = (Number(a.level) || 0) - (Number(b.level) || 0);
-      if (lvlDiff !== 0) return lvlDiff;
-      return (a.name || '').localeCompare(b.name || '');
-    });
-  }, [spells]);
+  const knownSpellSections = useMemo(
+    () => groupSpellsByLevel(spells, knownCollapsed, false),
+    [spells, knownCollapsed]
+  );
+
+  const allKnownCollapsed = useMemo(() => {
+    if (knownSpellSections.length === 0) return false;
+    return knownSpellSections.every((sec) => Boolean(knownCollapsed[sec.level]));
+  }, [knownSpellSections, knownCollapsed]);
 
   const filteredApiSpells = useMemo(() => {
     const q = apiSearch.trim().toLowerCase();
@@ -145,6 +236,59 @@ export default function CharacterSpellsScreen() {
         (sp.index || '').toLowerCase().includes(q)
     );
   }, [apiSpells, apiSearch]);
+
+  const modalSpellSections = useMemo(
+    () =>
+      groupSpellsByLevel(
+        filteredApiSpells,
+        modalCollapsed,
+        apiSearch.trim().length > 0
+      ),
+    [filteredApiSpells, modalCollapsed, apiSearch]
+  );
+
+  const allModalCollapsed = useMemo(() => {
+    if (modalSpellSections.length === 0) return false;
+    return modalSpellSections.every((sec) => Boolean(modalCollapsed[sec.level]));
+  }, [modalSpellSections, modalCollapsed]);
+
+  const visibleCircles = useMemo(() => {
+    return ALL_SPELL_CIRCLES.filter(
+      (c) => BASE_SPELL_CIRCLES.includes(c) || (spellSlots[c]?.max || 0) > 0
+    );
+  }, [spellSlots]);
+
+  function handleToggleKnownLevel(level) {
+    setKnownCollapsed((prev) => ({ ...prev, [level]: !prev[level] }));
+  }
+
+  function handleToggleAllKnownLevels() {
+    if (allKnownCollapsed) {
+      setKnownCollapsed({});
+    } else {
+      const next = {};
+      knownSpellSections.forEach((sec) => {
+        next[sec.level] = true;
+      });
+      setKnownCollapsed(next);
+    }
+  }
+
+  function handleToggleModalLevel(level) {
+    setModalCollapsed((prev) => ({ ...prev, [level]: !prev[level] }));
+  }
+
+  function handleToggleAllModalLevels() {
+    if (allModalCollapsed) {
+      setModalCollapsed({});
+    } else {
+      const next = {};
+      modalSpellSections.forEach((sec) => {
+        next[sec.level] = true;
+      });
+      setModalCollapsed(next);
+    }
+  }
 
   async function persistUpdate(partial) {
     if (!character) return;
@@ -180,12 +324,6 @@ export default function CharacterSpellsScreen() {
     });
   }
 
-  const visibleCircles = useMemo(() => {
-    return ALL_SPELL_CIRCLES.filter(
-      (c) => BASE_SPELL_CIRCLES.includes(c) || (spellSlots[c]?.max || 0) > 0
-    );
-  }, [spellSlots]);
-
   async function handleRecoverAllSlots() {
     const resetSlots = {};
     ALL_SPELL_CIRCLES.forEach((circle) => {
@@ -196,25 +334,13 @@ export default function CharacterSpellsScreen() {
     await persistUpdate({ spellSlots: resetSlots });
   }
 
-  async function loadApiSpells() {
-    setApiLoading(true);
-    setApiError(null);
-    try {
-      const list = await fetchSpells();
-      setApiSpells(list);
-    } catch (err) {
-      setApiError(err.message);
-    } finally {
-      setApiLoading(false);
-    }
-  }
-
   function handleOpenModal() {
-    setModalVisible(true);
+    const charClass = (character?.classIndex || '').toLowerCase();
+    const defaultFilter = SPELLCASTER_KEYS.has(charClass) ? charClass : 'all';
+    setModalSpellClass(defaultFilter);
+    setModalCollapsed({});
     setApiSearch('');
-    if (apiSpells.length === 0) {
-      loadApiSpells();
-    }
+    setModalVisible(true);
   }
 
   async function handleLearnSpell(apiSpell) {
@@ -301,11 +427,19 @@ export default function CharacterSpellsScreen() {
     );
   }
 
+  const spellAbilityKey = getSpellcastingAbility(character.classIndex);
+  const spellMod = calculateModifier(
+    character.attributes?.[spellAbilityKey] ?? 10
+  );
+  const spellAttackBonus =
+    spellMod + calculateProficiencyBonus(character.level || 1);
+
   return (
     <View style={styles.root}>
       <ScrollView
         style={styles.container}
         contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
       >
         <View style={styles.sectionCard}>
           <View style={styles.sectionHeader}>
@@ -392,7 +526,7 @@ export default function CharacterSpellsScreen() {
         </View>
 
         <CustomButton
-          title="Aprender Magia da API D&D 5e"
+          title="Aprender Magia"
           icon="book-outline"
           variant="magic"
           onPress={handleOpenModal}
@@ -402,11 +536,29 @@ export default function CharacterSpellsScreen() {
           <View style={styles.sectionHeader}>
             <Ionicons name="flame-outline" size={18} color={COLORS.magicLight} />
             <Text style={styles.sectionTitle}>
-              Magias Conhecidas ({sortedSpells.length})
+              Magias Conhecidas ({spells.length})
             </Text>
+            {knownSpellSections.length > 0 ? (
+              <TouchableOpacity
+                style={styles.collapseAllBtn}
+                activeOpacity={0.78}
+                onPress={handleToggleAllKnownLevels}
+              >
+                <Ionicons
+                  name={
+                    allKnownCollapsed ? 'expand-outline' : 'contract-outline'
+                  }
+                  size={13}
+                  color={COLORS.primaryLight}
+                />
+                <Text style={styles.collapseAllText}>
+                  {allKnownCollapsed ? 'Expandir' : 'Minimizar'}
+                </Text>
+              </TouchableOpacity>
+            ) : null}
           </View>
 
-          {sortedSpells.length === 0 ? (
+          {knownSpellSections.length === 0 ? (
             <View style={styles.emptyWrap}>
               <Ionicons
                 name="sparkles-outline"
@@ -414,92 +566,207 @@ export default function CharacterSpellsScreen() {
                 color={COLORS.textMuted}
               />
               <Text style={styles.emptyText}>
-                Nenhuma magia no grimório ainda. Toque no botão acima para aprender magias direto da API D&D 5e!
+                Nenhuma magia no grimório ainda. Toque em "Aprender Magia" para adicionar feitiços organizados por nível!
               </Text>
             </View>
           ) : (
-            <View style={styles.spellsList}>
-              {sortedSpells.map((spell) => {
-                const spellAbilityKey = getSpellcastingAbility(character.classIndex);
-                const spellMod = calculateModifier(
-                  character.attributes?.[spellAbilityKey] ?? 10
-                );
-                const spellAttackBonus =
-                  spellMod + calculateProficiencyBonus(character.level || 1);
-                const displayDamageDice = spell.damageDice
-                  ? String(spell.damageDice).replace(
-                      /MOD/gi,
-                      String(Math.max(0, spellMod))
-                    )
-                  : null;
-
-                return (
-                  <View key={spell.index} style={styles.spellCard}>
-                    <View style={styles.spellTopRow}>
-                      <TouchableOpacity
-                        style={styles.spellInfo}
-                        activeOpacity={0.78}
-                        onPress={() =>
-                          router.push({
-                            pathname: '/details/api-item',
-                            params: {
-                              category: 'spells',
-                              index: spell.index,
-                              name: spell.name,
-                            },
-                          })
+            <View style={styles.groupedSpellsWrap}>
+              {knownSpellSections.map((section) => (
+                <View key={section.level} style={styles.levelGroup}>
+                  <TouchableOpacity
+                    style={[
+                      styles.levelSectionHeader,
+                      section.isCollapsed && styles.levelSectionHeaderCollapsed,
+                    ]}
+                    activeOpacity={0.78}
+                    onPress={() => handleToggleKnownLevel(section.level)}
+                  >
+                    <View style={styles.levelSectionLeft}>
+                      <Ionicons
+                        name={
+                          section.isCollapsed
+                            ? 'chevron-forward'
+                            : 'chevron-down'
                         }
-                      >
-                        <View style={styles.spellHeaderRow}>
-                          <View style={styles.levelBadge}>
-                            <Text style={styles.levelBadgeText}>
-                              {spell.level === 0 ? 'Truque' : `Nv. ${spell.level}`}
-                            </Text>
-                          </View>
-                          <Text style={styles.spellName} numberOfLines={1}>
-                            {spell.name}
-                          </Text>
-                        </View>
-                        <Text style={styles.spellMeta} numberOfLines={1}>
-                          {spell.school || 'Arcana'} •{' '}
-                          {spell.casting_time || '1 action'} • Toque para detalhes
-                        </Text>
-                      </TouchableOpacity>
-
-                      <TouchableOpacity
-                        style={styles.forgetBtn}
-                        onPress={() => handleForgetSpell(spell.index)}
-                      >
-                        <Ionicons
-                          name="trash-outline"
-                          size={16}
-                          color={COLORS.danger}
-                        />
-                      </TouchableOpacity>
+                        size={16}
+                        color={COLORS.magicLight}
+                      />
+                      <Ionicons
+                        name="sparkles"
+                        size={13}
+                        color={COLORS.magicLight}
+                      />
+                      <Text style={styles.levelSectionTitle}>
+                        {section.title}
+                      </Text>
                     </View>
+                    <Text style={styles.levelSectionCount}>
+                      {section.totalCount}{' '}
+                      {section.totalCount === 1 ? 'magia' : 'magias'}
+                    </Text>
+                  </TouchableOpacity>
 
-                    {spell.damageDice || spell.attackType ? (
-                      <View style={styles.spellRollRow}>
-                        {spell.attackType ? (
-                          <TouchableOpacity
-                            style={[styles.spellRollBtn, styles.spellAttackBtn]}
-                            activeOpacity={0.78}
-                            onPress={() => {
-                              const critDice = spell.damageDice
-                                ? doubleDiceExpression(spell.damageDice)
-                                : null;
-                              const damageFollowUp = spell.damageDice
-                                ? {
-                                    label: `Rolar ${
-                                      spell.isHeal ? 'Cura' : 'Dano'
-                                    } (${displayDamageDice}${
-                                      !spell.isHeal && spell.damageType
-                                        ? ` • ${spell.damageType}`
-                                        : ''
-                                    })`,
-                                    icon: spell.isHeal ? 'heart' : 'flame',
-                                    variant: spell.isHeal ? 'primary' : 'danger',
-                                    onPress: () =>
+                  {!section.isCollapsed ? (
+                    <View style={styles.spellsList}>
+                      {section.data.map((spell) => {
+                        const displayDamageDice = spell.damageDice
+                          ? String(spell.damageDice).replace(
+                              /MOD/gi,
+                              String(Math.max(0, spellMod))
+                            )
+                          : null;
+
+                        return (
+                          <View key={spell.index} style={styles.spellCard}>
+                            <View style={styles.spellTopRow}>
+                              <TouchableOpacity
+                                style={styles.spellInfo}
+                                activeOpacity={0.78}
+                                onPress={() =>
+                                  router.push({
+                                    pathname: '/details/api-item',
+                                    params: {
+                                      category: 'spells',
+                                      index: spell.index,
+                                      name: spell.name,
+                                    },
+                                  })
+                                }
+                              >
+                                <View style={styles.spellHeaderRow}>
+                                  <View style={styles.levelBadge}>
+                                    <Text style={styles.levelBadgeText}>
+                                      {spell.level === 0
+                                        ? 'Truque'
+                                        : `Nv. ${spell.level}`}
+                                    </Text>
+                                  </View>
+                                  <Text
+                                    style={styles.spellName}
+                                    numberOfLines={1}
+                                  >
+                                    {spell.name}
+                                  </Text>
+                                </View>
+                                <Text
+                                  style={styles.spellMeta}
+                                  numberOfLines={1}
+                                >
+                                  {spell.school || 'Arcana'} •{' '}
+                                  {spell.casting_time || '1 action'} • Toque
+                                  para detalhes
+                                </Text>
+                              </TouchableOpacity>
+
+                              <TouchableOpacity
+                                style={styles.forgetBtn}
+                                onPress={() => handleForgetSpell(spell.index)}
+                              >
+                                <Ionicons
+                                  name="trash-outline"
+                                  size={16}
+                                  color={COLORS.danger}
+                                />
+                              </TouchableOpacity>
+                            </View>
+
+                            {spell.damageDice || spell.attackType ? (
+                              <View style={styles.spellRollRow}>
+                                {spell.attackType ? (
+                                  <TouchableOpacity
+                                    style={[
+                                      styles.spellRollBtn,
+                                      styles.spellAttackBtn,
+                                    ]}
+                                    activeOpacity={0.78}
+                                    onPress={() => {
+                                      const critDice = spell.damageDice
+                                        ? doubleDiceExpression(spell.damageDice)
+                                        : null;
+                                      const damageFollowUp = spell.damageDice
+                                        ? {
+                                            label: `Rolar ${
+                                              spell.isHeal ? 'Cura' : 'Dano'
+                                            } (${displayDamageDice}${
+                                              !spell.isHeal && spell.damageType
+                                                ? ` • ${spell.damageType}`
+                                                : ''
+                                            })`,
+                                            icon: spell.isHeal
+                                              ? 'heart'
+                                              : 'flame',
+                                            variant: spell.isHeal
+                                              ? 'primary'
+                                              : 'danger',
+                                            onPress: () =>
+                                              executeQuickRoll({
+                                                expression: spell.damageDice,
+                                                spellMod,
+                                                title: `${
+                                                  spell.isHeal ? 'Cura' : 'Dano'
+                                                } • ${spell.name}`,
+                                                subtitle: spell.isHeal
+                                                  ? 'Pontos de Vida Restaurados'
+                                                  : spell.damageType
+                                                  ? `Tipo de Dano: ${spell.damageType}`
+                                                  : 'Dano Mágico',
+                                                kind: spell.isHeal
+                                                  ? 'heal'
+                                                  : 'damage',
+                                              }),
+                                          }
+                                        : null;
+                                      const critFollowUp =
+                                        critDice && !spell.isHeal
+                                          ? {
+                                              label: `Rolar Dano Crítico (${critDice})`,
+                                              icon: 'sparkles',
+                                              onPress: () =>
+                                                executeQuickRoll({
+                                                  expression: critDice,
+                                                  spellMod,
+                                                  title: `Dano Crítico • ${spell.name}`,
+                                                  subtitle: spell.damageType
+                                                    ? `Crítico (Dados Dobrados) • ${spell.damageType}`
+                                                    : 'Dano Crítico (Dados Dobrados)',
+                                                  kind: 'damage',
+                                                }),
+                                            }
+                                          : null;
+
+                                      executeQuickRoll({
+                                        expression: '1d20',
+                                        extraModifier: spellAttackBonus,
+                                        title: `Ataque Mágico • ${spell.name}`,
+                                        subtitle: `Ataque ${spell.attackType} (${spellAbilityKey.toUpperCase()} + Prof.)`,
+                                        kind: 'attack',
+                                        followUpAction: damageFollowUp,
+                                        critFollowUpAction: critFollowUp,
+                                      });
+                                    }}
+                                  >
+                                    <Ionicons
+                                      name="dice-outline"
+                                      size={15}
+                                      color={COLORS.magicLight}
+                                    />
+                                    <Text style={styles.spellRollText}>
+                                      Ataque 1d20{' '}
+                                      {formatModifier(spellAttackBonus)}
+                                    </Text>
+                                  </TouchableOpacity>
+                                ) : null}
+
+                                {spell.damageDice ? (
+                                  <TouchableOpacity
+                                    style={[
+                                      styles.spellRollBtn,
+                                      spell.isHeal
+                                        ? styles.spellHealBtn
+                                        : styles.spellDamageBtn,
+                                    ]}
+                                    activeOpacity={0.78}
+                                    onPress={() =>
                                       executeQuickRoll({
                                         expression: spell.damageDice,
                                         spellMod,
@@ -512,99 +779,42 @@ export default function CharacterSpellsScreen() {
                                           ? `Tipo de Dano: ${spell.damageType}`
                                           : 'Dano Mágico',
                                         kind: spell.isHeal ? 'heal' : 'damage',
-                                      }),
-                                  }
-                                : null;
-                              const critFollowUp =
-                                critDice && !spell.isHeal
-                                  ? {
-                                      label: `Rolar Dano Crítico (${critDice})`,
-                                      icon: 'sparkles',
-                                      onPress: () =>
-                                        executeQuickRoll({
-                                          expression: critDice,
-                                          spellMod,
-                                          title: `Dano Crítico • ${spell.name}`,
-                                          subtitle: spell.damageType
-                                            ? `Crítico (Dados Dobrados) • ${spell.damageType}`
-                                            : 'Dano Crítico (Dados Dobrados)',
-                                          kind: 'damage',
-                                        }),
+                                      })
                                     }
-                                  : null;
-
-                              executeQuickRoll({
-                                expression: '1d20',
-                                extraModifier: spellAttackBonus,
-                                title: `Ataque Mágico • ${spell.name}`,
-                                subtitle: `Ataque ${spell.attackType} (${spellAbilityKey.toUpperCase()} + Prof.)`,
-                                kind: 'attack',
-                                followUpAction: damageFollowUp,
-                                critFollowUpAction: critFollowUp,
-                              });
-                            }}
-                          >
-                            <Ionicons
-                              name="dice-outline"
-                              size={15}
-                              color={COLORS.magicLight}
-                            />
-                            <Text style={styles.spellRollText}>
-                              Ataque 1d20 {formatModifier(spellAttackBonus)}
-                            </Text>
-                          </TouchableOpacity>
-                        ) : null}
-
-                        {spell.damageDice ? (
-                          <TouchableOpacity
-                            style={[
-                              styles.spellRollBtn,
-                              spell.isHeal
-                                ? styles.spellHealBtn
-                                : styles.spellDamageBtn,
-                            ]}
-                            activeOpacity={0.78}
-                            onPress={() =>
-                              executeQuickRoll({
-                                expression: spell.damageDice,
-                                spellMod,
-                                title: `${
-                                  spell.isHeal ? 'Cura' : 'Dano'
-                                } • ${spell.name}`,
-                                subtitle: spell.isHeal
-                                  ? 'Pontos de Vida Restaurados'
-                                  : spell.damageType
-                                  ? `Tipo de Dano: ${spell.damageType}`
-                                  : 'Dano Mágico',
-                                kind: spell.isHeal ? 'heal' : 'damage',
-                              })
-                            }
-                          >
-                            <Ionicons
-                              name={spell.isHeal ? 'heart' : 'flame'}
-                              size={15}
-                              color={
-                                spell.isHeal ? COLORS.success : COLORS.danger
-                              }
-                            />
-                            <Text style={styles.spellRollText}>
-                              {spell.isHeal ? 'Cura' : 'Dano'} {displayDamageDice}
-                              {!spell.isHeal && spell.damageType
-                                ? ` (${spell.damageType})`
-                                : ''}
-                            </Text>
-                          </TouchableOpacity>
-                        ) : null}
-                      </View>
-                    ) : null}
-                  </View>
-                );
-              })}
+                                  >
+                                    <Ionicons
+                                      name={spell.isHeal ? 'heart' : 'flame'}
+                                      size={15}
+                                      color={
+                                        spell.isHeal
+                                          ? COLORS.success
+                                          : COLORS.danger
+                                      }
+                                    />
+                                    <Text style={styles.spellRollText}>
+                                      {spell.isHeal ? 'Cura' : 'Dano'}{' '}
+                                      {displayDamageDice}
+                                      {!spell.isHeal && spell.damageType
+                                        ? ` (${spell.damageType})`
+                                        : ''}
+                                    </Text>
+                                  </TouchableOpacity>
+                                ) : null}
+                              </View>
+                            ) : null}
+                          </View>
+                        );
+                      })}
+                    </View>
+                  ) : null}
+                </View>
+              ))}
             </View>
           )}
         </View>
       </ScrollView>
 
+      {/* Modal Aprender Magia (por nível + ordem alfabética + filtro por classe + seções recolhíveis) */}
       <Modal
         visible={modalVisible}
         animationType="slide"
@@ -614,7 +824,12 @@ export default function CharacterSpellsScreen() {
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Aprender Magias (API)</Text>
+              <View style={styles.modalHeaderTitleCol}>
+                <Text style={styles.modalTitle}>Aprender Magia</Text>
+                <Text style={styles.modalSubtitle}>
+                  Organizado por nível e ordem alfabética (A–Z)
+                </Text>
+              </View>
               <TouchableOpacity
                 style={styles.modalCloseBtn}
                 onPress={() => setModalVisible(false)}
@@ -629,22 +844,119 @@ export default function CharacterSpellsScreen() {
               placeholder="Buscar magia (ex: Fireball, Cure Wounds, Shield)..."
               icon="search-outline"
               showClear
+              style={styles.modalSearch}
             />
+
+            <View style={styles.modalFilterWrap}>
+              <View style={styles.modalFilterHeader}>
+                <Text style={styles.modalFilterLabel}>Classe Conjuradora:</Text>
+                {!apiLoading && !apiError && modalSpellSections.length > 0 ? (
+                  <TouchableOpacity
+                    style={styles.collapseAllBtn}
+                    activeOpacity={0.78}
+                    onPress={handleToggleAllModalLevels}
+                  >
+                    <Ionicons
+                      name={
+                        allModalCollapsed
+                          ? 'expand-outline'
+                          : 'contract-outline'
+                      }
+                      size={13}
+                      color={COLORS.primaryLight}
+                    />
+                    <Text style={styles.collapseAllText}>
+                      {allModalCollapsed ? 'Expandir níveis' : 'Minimizar todos'}
+                    </Text>
+                  </TouchableOpacity>
+                ) : null}
+              </View>
+
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.modalClassRow}
+              >
+                {SPELLCASTER_CLASSES.map((cls) => {
+                  const isActive = cls.key === modalSpellClass;
+                  return (
+                    <TouchableOpacity
+                      key={cls.key}
+                      activeOpacity={0.8}
+                      style={[
+                        styles.classChip,
+                        isActive && styles.classChipActive,
+                      ]}
+                      onPress={() => setModalSpellClass(cls.key)}
+                    >
+                      <Text
+                        style={[
+                          styles.classChipText,
+                          isActive && styles.classChipTextActive,
+                        ]}
+                      >
+                        {cls.label}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+            </View>
 
             {apiLoading ? (
               <LoadingView message="Buscando magias da API D&D 5e..." />
             ) : apiError ? (
-              <LoadingView error={apiError} onRetry={loadApiSpells} />
+              <LoadingView
+                error={apiError}
+                onRetry={() => loadApiSpells(modalSpellClass)}
+              />
             ) : (
-              <FlatList
-                data={filteredApiSpells}
+              <SectionList
+                sections={modalSpellSections}
                 keyExtractor={(item) => item.index}
+                stickySectionHeadersEnabled={false}
+                showsVerticalScrollIndicator={false}
                 contentContainerStyle={styles.modalList}
                 ListEmptyComponent={
                   <Text style={styles.modalEmptyText}>
-                    Nenhuma magia encontrada para esta busca.
+                    Nenhuma magia encontrada para este filtro ou busca.
                   </Text>
                 }
+                renderSectionHeader={({ section }) => (
+                  <TouchableOpacity
+                    style={[
+                      styles.levelSectionHeader,
+                      section.isCollapsed && styles.levelSectionHeaderCollapsed,
+                      styles.modalSectionHeader,
+                    ]}
+                    activeOpacity={0.78}
+                    onPress={() => handleToggleModalLevel(section.level)}
+                  >
+                    <View style={styles.levelSectionLeft}>
+                      <Ionicons
+                        name={
+                          section.isCollapsed
+                            ? 'chevron-forward'
+                            : 'chevron-down'
+                        }
+                        size={16}
+                        color={COLORS.magicLight}
+                      />
+                      <Ionicons
+                        name="sparkles"
+                        size={13}
+                        color={COLORS.magicLight}
+                      />
+                      <Text style={styles.levelSectionTitle}>
+                        {section.title}
+                      </Text>
+                    </View>
+                    <Text style={styles.levelSectionCount}>
+                      {section.totalCount}{' '}
+                      {section.totalCount === 1 ? 'magia' : 'magias'}
+                    </Text>
+                  </TouchableOpacity>
+                )}
                 renderItem={({ item }) => {
                   const isLearned = learnedIndexSet.has(item.index);
                   const isLearning = learningIndex === item.index;
@@ -655,11 +967,11 @@ export default function CharacterSpellsScreen() {
                         <Text style={styles.apiSpellName} numberOfLines={1}>
                           {item.name}
                         </Text>
-                        {item.level !== undefined ? (
-                          <Text style={styles.apiSpellMeta}>
-                            {item.level === 0 ? 'Truque' : `Nível ${item.level}`}
-                          </Text>
-                        ) : null}
+                        <Text style={styles.apiSpellMeta}>
+                          {item.level === 0
+                            ? 'Truque (Nível 0)'
+                            : `${item.level}º Círculo`}
+                        </Text>
                       </View>
 
                       <TouchableOpacity
@@ -765,6 +1077,22 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZE.xs,
     fontWeight: '700',
   },
+  collapseAllBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: COLORS.primaryMuted,
+    borderWidth: 1,
+    borderColor: COLORS.primary,
+    borderRadius: RADIUS.full,
+    paddingHorizontal: SPACING.sm + 2,
+    paddingVertical: 3,
+  },
+  collapseAllText: {
+    color: COLORS.primaryLight,
+    fontSize: FONT_SIZE.xs,
+    fontWeight: '700',
+  },
   slotsList: {
     gap: SPACING.md,
   },
@@ -837,6 +1165,48 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZE.sm,
     textAlign: 'center',
     lineHeight: 20,
+  },
+  groupedSpellsWrap: {
+    gap: SPACING.md,
+  },
+  levelGroup: {
+    gap: SPACING.sm,
+  },
+  levelSectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: COLORS.surfaceElevated,
+    borderWidth: 1,
+    borderColor: COLORS.borderLight,
+    borderRadius: RADIUS.md,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm + 2,
+  },
+  levelSectionHeaderCollapsed: {
+    backgroundColor: COLORS.background,
+    borderColor: COLORS.border,
+  },
+  modalSectionHeader: {
+    marginTop: SPACING.xs,
+    marginBottom: SPACING.xs + 2,
+  },
+  levelSectionLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs + 2,
+  },
+  levelSectionTitle: {
+    color: COLORS.magicLight,
+    fontSize: FONT_SIZE.xs + 1,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  levelSectionCount: {
+    color: COLORS.textSecondary,
+    fontSize: FONT_SIZE.xs,
+    fontWeight: '700',
   },
   spellsList: {
     gap: SPACING.sm,
@@ -936,7 +1306,7 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   modalCard: {
-    height: '82%',
+    height: '86%',
     width: '100%',
     maxWidth: LAYOUT.maxContentWidth,
     alignSelf: 'center',
@@ -949,14 +1319,23 @@ const styles = StyleSheet.create({
   },
   modalHeader: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     justifyContent: 'space-between',
-    marginBottom: SPACING.md,
+    marginBottom: SPACING.sm,
+    gap: SPACING.sm,
+  },
+  modalHeaderTitleCol: {
+    flex: 1,
   },
   modalTitle: {
     color: COLORS.textPrimary,
     fontSize: FONT_SIZE.xl,
     fontWeight: '800',
+  },
+  modalSubtitle: {
+    color: COLORS.textSecondary,
+    fontSize: FONT_SIZE.xs,
+    marginTop: 2,
   },
   modalCloseBtn: {
     width: 34,
@@ -966,8 +1345,50 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  modalList: {
+  modalSearch: {
+    marginBottom: SPACING.sm,
+  },
+  modalFilterWrap: {
+    marginBottom: SPACING.sm,
     gap: SPACING.xs + 2,
+  },
+  modalFilterHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  modalFilterLabel: {
+    color: COLORS.textMuted,
+    fontSize: FONT_SIZE.xs,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  modalClassRow: {
+    gap: SPACING.xs + 2,
+  },
+  classChip: {
+    backgroundColor: COLORS.surfaceElevated,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: RADIUS.full,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: 6,
+  },
+  classChipActive: {
+    backgroundColor: COLORS.magic,
+    borderColor: COLORS.magicLight,
+  },
+  classChipText: {
+    color: COLORS.textSecondary,
+    fontSize: FONT_SIZE.xs,
+    fontWeight: '600',
+  },
+  classChipTextActive: {
+    color: COLORS.white,
+    fontWeight: '700',
+  },
+  modalList: {
     paddingBottom: SPACING.xl,
   },
   modalEmptyText: {
@@ -986,6 +1407,7 @@ const styles = StyleSheet.create({
     paddingVertical: SPACING.sm + 2,
     paddingHorizontal: SPACING.md,
     gap: SPACING.sm,
+    marginBottom: SPACING.xs + 2,
   },
   apiSpellInfo: {
     flex: 1,
