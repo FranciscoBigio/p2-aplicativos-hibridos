@@ -19,6 +19,7 @@ import StatBox from '../../../src/components/StatBox';
 import { getCharacterById, updateCharacter } from '../../../src/services/storage';
 import {
   ATTRIBUTES,
+  SKILLS,
   calculateModifier,
   formatModifier,
   calculateProficiencyBonus,
@@ -79,6 +80,38 @@ export default function CharacterOverviewScreen() {
     const clamped = Math.max(0, Math.min(maxHp, nextHp));
     setCharacter((prev) => (prev ? { ...prev, currentHp: clamped } : prev));
     await updateCharacter(character.id, { currentHp: clamped });
+  }
+
+  const savingThrows = character.savingThrows || [];
+  const proficientSkills = character.proficientSkills || [];
+
+  async function handleToggleSavingThrow(attrKey) {
+    const exists = savingThrows.includes(attrKey);
+    const next = exists
+      ? savingThrows.filter((k) => k !== attrKey)
+      : [...savingThrows, attrKey];
+    setCharacter((prev) => (prev ? { ...prev, savingThrows: next } : prev));
+    await updateCharacter(character.id, { savingThrows: next });
+  }
+
+  async function handleToggleSkill(skillId) {
+    const exists = proficientSkills.includes(skillId);
+    const next = exists
+      ? proficientSkills.filter((id) => id !== skillId)
+      : [...proficientSkills, skillId];
+    setCharacter((prev) => (prev ? { ...prev, proficientSkills: next } : prev));
+    await updateCharacter(character.id, { proficientSkills: next });
+  }
+
+  function openRoll(modValue, label) {
+    router.push({
+      pathname: '/(tabs)/dice',
+      params: {
+        sides: '20',
+        modifier: String(modValue),
+        label,
+      },
+    });
   }
 
   return (
@@ -201,20 +234,131 @@ export default function CharacterOverviewScreen() {
                 label={attr.label}
                 score={score}
                 onPress={() =>
-                  router.push({
-                    pathname: '/(tabs)/dice',
-                    params: {
-                      sides: '20',
-                      modifier: String(mod),
-                      label: `Teste de ${attr.label} • ${character.name}`,
-                    },
-                  })
+                  openRoll(mod, `Teste de ${attr.label} • ${character.name}`)
                 }
               />
             );
           })}
         </View>
       </View>
+
+      <View style={styles.sectionCard}>
+        <View style={styles.sectionHeader}>
+          <Ionicons name="shield-checkmark-outline" size={17} color={COLORS.primary} />
+          <Text style={styles.sectionTitle}>Salvaguardas</Text>
+          <Text style={styles.sectionHint}>Toque para proficiência</Text>
+        </View>
+        <View style={styles.savesGrid}>
+          {ATTRIBUTES.map((attr) => {
+            const isProf = savingThrows.includes(attr.key);
+            const total =
+              calculateModifier(attributes[attr.key] ?? 10) +
+              (isProf ? profBonus : 0);
+            return (
+              <TouchableOpacity
+                key={attr.key}
+                style={[styles.saveChip, isProf && styles.saveChipActive]}
+                activeOpacity={0.78}
+                onPress={() => handleToggleSavingThrow(attr.key)}
+              >
+                <Ionicons
+                  name={isProf ? 'checkmark-circle' : 'ellipse-outline'}
+                  size={16}
+                  color={isProf ? COLORS.primaryLight : COLORS.textMuted}
+                />
+                <Text style={styles.saveName}>{attr.short}</Text>
+                <TouchableOpacity
+                  onPress={() =>
+                    openRoll(total, `Salvaguarda ${attr.label} • ${character.name}`)
+                  }
+                  style={styles.saveModPill}
+                >
+                  <Text style={styles.saveModText}>{formatModifier(total)}</Text>
+                </TouchableOpacity>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      </View>
+
+      <View style={styles.sectionCard}>
+        <View style={styles.sectionHeader}>
+          <Ionicons name="list-outline" size={17} color={COLORS.primary} />
+          <Text style={styles.sectionTitle}>Perícias (18)</Text>
+          <Text style={styles.sectionHint}>Toque para alternar</Text>
+        </View>
+        <View style={styles.skillsList}>
+          {SKILLS.map((skill) => {
+            const isProf = proficientSkills.includes(skill.id);
+            const attrInfo = ATTRIBUTES.find((a) => a.key === skill.ability);
+            const total =
+              calculateModifier(attributes[skill.ability] ?? 10) +
+              (isProf ? profBonus : 0);
+
+            return (
+              <View key={skill.id} style={styles.skillRow}>
+                <TouchableOpacity
+                  style={styles.skillToggleArea}
+                  activeOpacity={0.75}
+                  onPress={() => handleToggleSkill(skill.id)}
+                >
+                  <Ionicons
+                    name={isProf ? 'checkmark-circle' : 'ellipse-outline'}
+                    size={18}
+                    color={isProf ? COLORS.primaryLight : COLORS.textMuted}
+                  />
+                  <Text
+                    style={[
+                      styles.skillName,
+                      isProf && styles.skillNameActive,
+                    ]}
+                  >
+                    {skill.name}
+                  </Text>
+                  <Text style={styles.skillAttrTag}>
+                    ({attrInfo?.short || skill.ability.toUpperCase()})
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[
+                    styles.skillModBtn,
+                    isProf && styles.skillModBtnActive,
+                  ]}
+                  onPress={() =>
+                    openRoll(total, `${skill.name} • ${character.name}`)
+                  }
+                >
+                  <Text
+                    style={[
+                      styles.skillModText,
+                      isProf && styles.skillModTextActive,
+                    ]}
+                  >
+                    {formatModifier(total)}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            );
+          })}
+        </View>
+      </View>
+
+      {Array.isArray(character.traits) && character.traits.length > 0 ? (
+        <View style={styles.sectionCard}>
+          <View style={styles.sectionHeader}>
+            <Ionicons name="star-outline" size={17} color={COLORS.primary} />
+            <Text style={styles.sectionTitle}>Traços Raciais</Text>
+          </View>
+          <View style={styles.traitsWrap}>
+            {character.traits.map((trait, idx) => (
+              <View key={`${trait}_${idx}`} style={styles.traitBadge}>
+                <Text style={styles.traitText}>{trait}</Text>
+              </View>
+            ))}
+          </View>
+        </View>
+      ) : null}
     </ScrollView>
   );
 }
@@ -418,5 +562,121 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: SPACING.sm,
+  },
+  savesGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: SPACING.sm,
+  },
+  saveChip: {
+    flexBasis: '47%',
+    flexGrow: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.surfaceElevated,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: RADIUS.md,
+    paddingHorizontal: SPACING.sm + 2,
+    paddingVertical: SPACING.sm,
+    gap: SPACING.xs + 2,
+  },
+  saveChipActive: {
+    borderColor: COLORS.primary,
+    backgroundColor: COLORS.primaryMuted,
+  },
+  saveName: {
+    flex: 1,
+    color: COLORS.textPrimary,
+    fontSize: FONT_SIZE.sm,
+    fontWeight: '700',
+  },
+  saveModPill: {
+    backgroundColor: COLORS.card,
+    borderRadius: RADIUS.sm,
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: 3,
+    borderWidth: 1,
+    borderColor: COLORS.borderLight,
+  },
+  saveModText: {
+    color: COLORS.primaryLight,
+    fontSize: FONT_SIZE.xs,
+    fontWeight: '800',
+  },
+  skillsList: {
+    gap: 6,
+  },
+  skillRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: COLORS.surfaceElevated,
+    borderRadius: RADIUS.sm + 2,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    paddingHorizontal: SPACING.sm + 2,
+    paddingVertical: SPACING.xs + 4,
+    gap: SPACING.sm,
+  },
+  skillToggleArea: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+  },
+  skillName: {
+    color: COLORS.textSecondary,
+    fontSize: FONT_SIZE.sm,
+    fontWeight: '600',
+  },
+  skillNameActive: {
+    color: COLORS.textPrimary,
+    fontWeight: '700',
+  },
+  skillAttrTag: {
+    color: COLORS.textMuted,
+    fontSize: FONT_SIZE.xs,
+    fontWeight: '600',
+  },
+  skillModBtn: {
+    minWidth: 42,
+    alignItems: 'center',
+    backgroundColor: COLORS.card,
+    borderWidth: 1,
+    borderColor: COLORS.borderLight,
+    borderRadius: RADIUS.sm,
+    paddingVertical: 4,
+    paddingHorizontal: SPACING.sm,
+  },
+  skillModBtnActive: {
+    backgroundColor: COLORS.primaryMuted,
+    borderColor: COLORS.primary,
+  },
+  skillModText: {
+    color: COLORS.textSecondary,
+    fontSize: FONT_SIZE.xs,
+    fontWeight: '800',
+  },
+  skillModTextActive: {
+    color: COLORS.primaryLight,
+  },
+  traitsWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: SPACING.xs + 2,
+  },
+  traitBadge: {
+    backgroundColor: COLORS.surfaceElevated,
+    borderWidth: 1,
+    borderColor: COLORS.borderLight,
+    borderRadius: RADIUS.sm,
+    paddingHorizontal: SPACING.sm + 2,
+    paddingVertical: 5,
+  },
+  traitText: {
+    color: COLORS.textPrimary,
+    fontSize: FONT_SIZE.xs,
+    fontWeight: '600',
   },
 });
