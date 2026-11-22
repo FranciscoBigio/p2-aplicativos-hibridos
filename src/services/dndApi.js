@@ -1,6 +1,10 @@
 const BASE_URL = 'https://www.dnd5eapi.co/api';
 const memoryCache = new Map();
 
+export function clearApiCache() {
+  memoryCache.clear();
+}
+
 async function apiFetch(endpoint) {
   const url = `${BASE_URL}${endpoint}`;
   if (memoryCache.has(url)) {
@@ -17,19 +21,35 @@ async function apiFetch(endpoint) {
       signal: controller.signal,
     });
 
+    if (response.status === 404) {
+      throw new Error('Registro não encontrado na API D&D 5e.');
+    }
+
     if (!response.ok) {
-      throw new Error(`Erro na API D&D 5e (HTTP ${response.status}).`);
+      throw new Error(
+        `A API D&D 5e retornou erro HTTP ${response.status}. Tente novamente em instantes.`
+      );
     }
 
     const data = await response.json();
     memoryCache.set(url, data);
     return data;
   } catch (error) {
-    if (error.name === 'AbortError') {
-      throw new Error('Tempo limite excedido ao conectar na API D&D 5e. Verifique sua conexão.');
+    if (error?.name === 'AbortError') {
+      throw new Error(
+        'Tempo limite excedido ao conectar na API D&D 5e. Verifique sua conexão com a internet.'
+      );
+    }
+    if (
+      error instanceof TypeError ||
+      /network request failed|failed to fetch/i.test(error?.message || '')
+    ) {
+      throw new Error(
+        'Sem conexão com a internet ou falha de rede ao acessar a API D&D 5e.'
+      );
     }
     throw new Error(
-      error.message || 'Não foi possível carregar os dados da API D&D 5e.'
+      error?.message || 'Não foi possível carregar os dados da API D&D 5e.'
     );
   } finally {
     clearTimeout(timeoutId);
