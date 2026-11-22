@@ -20,10 +20,30 @@ import { COLORS, SPACING, RADIUS, FONT_SIZE, LAYOUT } from '../../../src/theme/c
 import LoadingView from '../../../src/components/LoadingView';
 import CustomButton from '../../../src/components/CustomButton';
 import CustomInput from '../../../src/components/CustomInput';
-import { getCharacterById, updateCharacter } from '../../../src/services/storage';
+import QuickRollModal from '../../../src/components/QuickRollModal';
+import {
+  getCharacterById,
+  updateCharacter,
+  addDiceRoll,
+} from '../../../src/services/storage';
 import { fetchSpells, fetchSpellDetail } from '../../../src/services/dndApi';
+import {
+  calculateModifier,
+  formatModifier,
+  calculateProficiencyBonus,
+  getSpellcastingAbility,
+  extractSpellDamageInfo,
+  rollDiceExpression,
+} from '../../../src/utils/dndRules';
 
 const SPELL_CIRCLES = [1, 2, 3];
+
+function doubleDiceExpression(expr) {
+  return String(expr || '1d6').replace(
+    /^(\d+)d(\d+)/i,
+    (_, qty, sides) => `${Number(qty) * 2}d${sides}`
+  );
+}
 
 export default function CharacterSpellsScreen() {
   const router = useRouter();
@@ -40,6 +60,8 @@ export default function CharacterSpellsScreen() {
   const [apiError, setApiError] = useState(null);
   const [apiSearch, setApiSearch] = useState('');
   const [learningIndex, setLearningIndex] = useState(null);
+  const [activeRoll, setActiveRoll] = useState(null);
+  const [lastRollConfig, setLastRollConfig] = useState(null);
 
   const loadCharacter = useCallback(async () => {
     if (!characterId) {
@@ -49,7 +71,39 @@ export default function CharacterSpellsScreen() {
     setLoading(true);
     try {
       const data = await getCharacterById(characterId);
-      setCharacter(data);
+      if (!data) {
+        setCharacter(null);
+        return;
+      }
+
+      const existingSpells = data.spells || [];
+      const needsHydration = existingSpells.some(
+        (sp) => sp.damageChecked !== true && sp.index
+      );
+
+      if (needsHydration) {
+        const hydratedSpells = await Promise.all(
+          existingSpells.map(async (sp) => {
+            if (sp.damageChecked === true || !sp.index) return sp;
+            try {
+              const detail = await fetchSpellDetail(sp.index);
+              const dmgInfo = extractSpellDamageInfo(detail, data.level || 1);
+              return {
+                ...sp,
+                ...dmgInfo,
+                damageChecked: true,
+              };
+            } catch {
+              return sp;
+            }
+          })
+        );
+        const updated = { ...data, spells: hydratedSpells };
+        setCharacter(updated);
+        await updateCharacter(data.id, { spells: hydratedSpells });
+      } else {
+        setCharacter(data);
+      }
     } finally {
       setLoading(false);
     }
@@ -162,12 +216,21 @@ export default function CharacterSpellsScreen() {
       let level = apiSpell.level ?? 0;
       let school = 'Arcana';
       let casting_time = '1 action';
+      let dmgInfo = {
+        damageDice: null,
+        damageType: null,
+        attackType: null,
+        isHeal: false,
+        damageAtSlotLevel: null,
+        damageAtCharLevel: null,
+      };
 
       try {
         const detail = await fetchSpellDetail(apiSpell.index);
         level = detail.level ?? 0;
         school = detail.school?.name || 'Arcana';
         casting_time = detail.casting_time || '1 action';
+        dmgInfo = extractSpellDamageInfo(detail, character?.level || 1);
       } catch {
         // Fallback seguro caso o detalhe falhe
       }
@@ -178,12 +241,38 @@ export default function CharacterSpellsScreen() {
         level,
         school,
         casting_time,
+        ...dmgInfo,
+        damageChecked: true,
       };
 
       await persistUpdate({ spells: [newSpell, ...spells] });
     } finally {
       setLearningIndex(null);
     }
+  }
+
+  async function executeQuickRoll(config) {
+    const rolled = rollDiceExpression(
+      config.expression,
+      config.extraModifier || 0,
+      config.spellMod || 0
+    );
+    const modalData = {
+      ...rolled,
+      title: config.title,
+      subtitle: config.subtitle,
+      kind: config.kind,
+      followUpAction: config.followUpAction || null,
+      critFollowUpAction: config.critFollowUpAction || null,
+    };
+
+    setLastRollConfig(config);
+    setActiveRoll(modalData);
+
+    await addDiceRoll({
+      ...rolled,
+      label: `${config.title} • ${character?.name || ''}`,
+    });
   }
 
   async function handleForgetSpell(spellIndex) {
@@ -322,49 +411,187 @@ export default function CharacterSpellsScreen() {
             </View>
           ) : (
             <View style={styles.spellsList}>
-              {sortedSpells.map((spell) => (
-                <View key={spell.index} style={styles.spellCard}>
-                  <TouchableOpacity
-                    style={styles.spellInfo}
-                    activeOpacity={0.78}
-                    onPress={() =>
-                      router.push({
-                        pathname: '/details/api-item',
-                        params: {
-                          category: 'spells',
-                          index: spell.index,
-                          name: spell.name,
-                        },
-                      })
-                    }
-                  >
-                    <View style={styles.spellHeaderRow}>
-                      <View style={styles.levelBadge}>
-                        <Text style={styles.levelBadgeText}>
-                          {spell.level === 0 ? 'Truque' : `Nv. ${spell.level}`}
-                        </Text>
-                      </View>
-                      <Text style={styles.spellName} numberOfLines={1}>
-                        {spell.name}
-                      </Text>
-                    </View>
-                    <Text style={styles.spellMeta} numberOfLines={1}>
-                      {spell.school || 'Arcana'} • {spell.casting_time || '1 action'} • Toque para detalhes
-                    </Text>
-                  </TouchableOpacity>
+              {sortedSpells.map((spell) => {
+                const spellAbilityKey = getSpellcastingAbility(character.classIndex);
+                const spellMod = calculateModifier(
+                  character.attributes?.[spellAbilityKey] ?? 10
+                );
+                const spellAttackBonus =
+                  spellMod + calculateProficiencyBonus(character.level || 1);
+                const displayDamageDice = spell.damageDice
+                  ? String(spell.damageDice).replace(
+                      /MOD/gi,
+                      String(Math.max(0, spellMod))
+                    )
+                  : null;
 
-                  <TouchableOpacity
-                    style={styles.forgetBtn}
-                    onPress={() => handleForgetSpell(spell.index)}
-                  >
-                    <Ionicons
-                      name="trash-outline"
-                      size={16}
-                      color={COLORS.danger}
-                    />
-                  </TouchableOpacity>
-                </View>
-              ))}
+                return (
+                  <View key={spell.index} style={styles.spellCard}>
+                    <View style={styles.spellTopRow}>
+                      <TouchableOpacity
+                        style={styles.spellInfo}
+                        activeOpacity={0.78}
+                        onPress={() =>
+                          router.push({
+                            pathname: '/details/api-item',
+                            params: {
+                              category: 'spells',
+                              index: spell.index,
+                              name: spell.name,
+                            },
+                          })
+                        }
+                      >
+                        <View style={styles.spellHeaderRow}>
+                          <View style={styles.levelBadge}>
+                            <Text style={styles.levelBadgeText}>
+                              {spell.level === 0 ? 'Truque' : `Nv. ${spell.level}`}
+                            </Text>
+                          </View>
+                          <Text style={styles.spellName} numberOfLines={1}>
+                            {spell.name}
+                          </Text>
+                        </View>
+                        <Text style={styles.spellMeta} numberOfLines={1}>
+                          {spell.school || 'Arcana'} •{' '}
+                          {spell.casting_time || '1 action'} • Toque para detalhes
+                        </Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        style={styles.forgetBtn}
+                        onPress={() => handleForgetSpell(spell.index)}
+                      >
+                        <Ionicons
+                          name="trash-outline"
+                          size={16}
+                          color={COLORS.danger}
+                        />
+                      </TouchableOpacity>
+                    </View>
+
+                    {spell.damageDice || spell.attackType ? (
+                      <View style={styles.spellRollRow}>
+                        {spell.attackType ? (
+                          <TouchableOpacity
+                            style={[styles.spellRollBtn, styles.spellAttackBtn]}
+                            activeOpacity={0.78}
+                            onPress={() => {
+                              const critDice = spell.damageDice
+                                ? doubleDiceExpression(spell.damageDice)
+                                : null;
+                              const damageFollowUp = spell.damageDice
+                                ? {
+                                    label: `Rolar ${
+                                      spell.isHeal ? 'Cura' : 'Dano'
+                                    } (${displayDamageDice}${
+                                      !spell.isHeal && spell.damageType
+                                        ? ` • ${spell.damageType}`
+                                        : ''
+                                    })`,
+                                    icon: spell.isHeal ? 'heart' : 'flame',
+                                    variant: spell.isHeal ? 'primary' : 'danger',
+                                    onPress: () =>
+                                      executeQuickRoll({
+                                        expression: spell.damageDice,
+                                        spellMod,
+                                        title: `${
+                                          spell.isHeal ? 'Cura' : 'Dano'
+                                        } • ${spell.name}`,
+                                        subtitle: spell.isHeal
+                                          ? 'Pontos de Vida Restaurados'
+                                          : spell.damageType
+                                          ? `Tipo de Dano: ${spell.damageType}`
+                                          : 'Dano Mágico',
+                                        kind: spell.isHeal ? 'heal' : 'damage',
+                                      }),
+                                  }
+                                : null;
+                              const critFollowUp =
+                                critDice && !spell.isHeal
+                                  ? {
+                                      label: `Rolar Dano Crítico (${critDice})`,
+                                      icon: 'sparkles',
+                                      onPress: () =>
+                                        executeQuickRoll({
+                                          expression: critDice,
+                                          spellMod,
+                                          title: `Dano Crítico • ${spell.name}`,
+                                          subtitle: spell.damageType
+                                            ? `Crítico (Dados Dobrados) • ${spell.damageType}`
+                                            : 'Dano Crítico (Dados Dobrados)',
+                                          kind: 'damage',
+                                        }),
+                                    }
+                                  : null;
+
+                              executeQuickRoll({
+                                expression: '1d20',
+                                extraModifier: spellAttackBonus,
+                                title: `Ataque Mágico • ${spell.name}`,
+                                subtitle: `Ataque ${spell.attackType} (${spellAbilityKey.toUpperCase()} + Prof.)`,
+                                kind: 'attack',
+                                followUpAction: damageFollowUp,
+                                critFollowUpAction: critFollowUp,
+                              });
+                            }}
+                          >
+                            <Ionicons
+                              name="dice-outline"
+                              size={15}
+                              color={COLORS.magicLight}
+                            />
+                            <Text style={styles.spellRollText}>
+                              Ataque 1d20 {formatModifier(spellAttackBonus)}
+                            </Text>
+                          </TouchableOpacity>
+                        ) : null}
+
+                        {spell.damageDice ? (
+                          <TouchableOpacity
+                            style={[
+                              styles.spellRollBtn,
+                              spell.isHeal
+                                ? styles.spellHealBtn
+                                : styles.spellDamageBtn,
+                            ]}
+                            activeOpacity={0.78}
+                            onPress={() =>
+                              executeQuickRoll({
+                                expression: spell.damageDice,
+                                spellMod,
+                                title: `${
+                                  spell.isHeal ? 'Cura' : 'Dano'
+                                } • ${spell.name}`,
+                                subtitle: spell.isHeal
+                                  ? 'Pontos de Vida Restaurados'
+                                  : spell.damageType
+                                  ? `Tipo de Dano: ${spell.damageType}`
+                                  : 'Dano Mágico',
+                                kind: spell.isHeal ? 'heal' : 'damage',
+                              })
+                            }
+                          >
+                            <Ionicons
+                              name={spell.isHeal ? 'heart' : 'flame'}
+                              size={15}
+                              color={
+                                spell.isHeal ? COLORS.success : COLORS.danger
+                              }
+                            />
+                            <Text style={styles.spellRollText}>
+                              {spell.isHeal ? 'Cura' : 'Dano'} {displayDamageDice}
+                              {!spell.isHeal && spell.damageType
+                                ? ` (${spell.damageType})`
+                                : ''}
+                            </Text>
+                          </TouchableOpacity>
+                        ) : null}
+                      </View>
+                    ) : null}
+                  </View>
+                );
+              })}
             </View>
           )}
         </View>
@@ -461,6 +688,15 @@ export default function CharacterSpellsScreen() {
           </View>
         </View>
       </Modal>
+
+      <QuickRollModal
+        visible={Boolean(activeRoll)}
+        roll={activeRoll}
+        onReroll={() => {
+          if (lastRollConfig) executeQuickRoll(lastRollConfig);
+        }}
+        onClose={() => setActiveRoll(null)}
+      />
     </View>
   );
 }
@@ -598,14 +834,53 @@ const styles = StyleSheet.create({
     gap: SPACING.sm,
   },
   spellCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
     backgroundColor: COLORS.surfaceElevated,
     borderRadius: RADIUS.md,
     borderWidth: 1,
     borderColor: COLORS.border,
     padding: SPACING.md,
     gap: SPACING.sm,
+  },
+  spellTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+  },
+  spellRollRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: SPACING.xs + 2,
+    paddingTop: SPACING.xs,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.border,
+  },
+  spellRollBtn: {
+    flexGrow: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    borderRadius: RADIUS.sm,
+    borderWidth: 1,
+    paddingHorizontal: SPACING.sm + 2,
+    paddingVertical: 7,
+  },
+  spellAttackBtn: {
+    backgroundColor: COLORS.magicMuted,
+    borderColor: COLORS.magic,
+  },
+  spellDamageBtn: {
+    backgroundColor: COLORS.dangerMuted,
+    borderColor: COLORS.danger,
+  },
+  spellHealBtn: {
+    backgroundColor: COLORS.successMuted,
+    borderColor: COLORS.success,
+  },
+  spellRollText: {
+    color: COLORS.textPrimary,
+    fontSize: FONT_SIZE.xs,
+    fontWeight: '800',
   },
   spellInfo: {
     flex: 1,

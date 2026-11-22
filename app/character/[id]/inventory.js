@@ -25,6 +25,7 @@ import {
   fetchEquipment,
   fetchEquipmentDetail,
 } from '../../../src/services/dndApi';
+import { extractWeaponInfo } from '../../../src/utils/dndRules';
 
 const COIN_TYPES = [
   { key: 'gp', label: 'Ouro (PO)', color: COLORS.primaryLight },
@@ -139,10 +140,19 @@ export default function CharacterInventoryScreen() {
       } else {
         let weight = 0;
         let category = 'Equipamento';
+        let weaponInfo = {
+          isWeapon: false,
+          damageDice: null,
+          twoHandedDamageDice: null,
+          damageType: null,
+          weaponRange: null,
+          properties: [],
+        };
         try {
           const detail = await fetchEquipmentDetail(apiItem.index);
           weight = Number(detail.weight) || 0;
           category = detail.equipment_category?.name || 'Equipamento';
+          weaponInfo = extractWeaponInfo(detail);
         } catch {
           // Mantém valores padrão se detalhe falhar momentaneamente
         }
@@ -155,6 +165,7 @@ export default function CharacterInventoryScreen() {
           weight,
           quantity: 1,
           equipped: false,
+          ...weaponInfo,
         };
         await persistUpdate({ inventory: [newItem, ...inventory] });
       }

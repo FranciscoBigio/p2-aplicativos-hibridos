@@ -58,6 +58,17 @@ export default function CharacterDetailLayout() {
         }}
       />
       <Tabs.Screen
+        name="weapons"
+        initialParams={{ id }}
+        options={{
+          title: 'Armas',
+          headerTitle: 'Armas & Ataques',
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="flash-outline" size={size} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
         name="inventory"
         initialParams={{ id }}
         options={{

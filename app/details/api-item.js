@@ -11,7 +11,15 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SPACING, RADIUS, FONT_SIZE, LAYOUT } from '../../src/theme/colors';
 import LoadingView from '../../src/components/LoadingView';
+import CustomButton from '../../src/components/CustomButton';
+import QuickRollModal from '../../src/components/QuickRollModal';
 import { fetchCompendiumDetail } from '../../src/services/dndApi';
+import { addDiceRoll } from '../../src/services/storage';
+import {
+  extractSpellDamageInfo,
+  extractWeaponInfo,
+  rollDiceExpression,
+} from '../../src/utils/dndRules';
 
 const CATEGORY_LABELS = {
   spells: 'Magia',
@@ -55,11 +63,12 @@ function TagList({ items }) {
   );
 }
 
-function renderSpellDetails(item) {
+function renderSpellDetails(item, onQuickRoll) {
   const levelLabel = item.level === 0 ? 'Truque (Nível 0)' : `Nível ${item.level}`;
   const components = Array.isArray(item.components)
     ? item.components.join(', ')
     : '—';
+  const dmgInfo = extractSpellDamageInfo(item, 1);
 
   return (
     <>
@@ -84,14 +93,43 @@ function renderSpellDetails(item) {
         ) : null}
       </View>
 
+      {dmgInfo.damageDice ? (
+        <CustomButton
+          title={`Rolar ${dmgInfo.isHeal ? 'Cura' : 'Dano'} (${dmgInfo.damageDice}${
+            !dmgInfo.isHeal && dmgInfo.damageType ? ` • ${dmgInfo.damageType}` : ''
+          })`}
+          icon={dmgInfo.isHeal ? 'heart' : 'flame'}
+          variant={dmgInfo.isHeal ? 'primary' : 'danger'}
+          onPress={() =>
+            onQuickRoll({
+              expression: dmgInfo.damageDice,
+              title: `${dmgInfo.isHeal ? 'Cura' : 'Dano'} • ${item.name}`,
+              subtitle: dmgInfo.isHeal
+                ? 'Pontos de Vida Restaurados'
+                : dmgInfo.damageType
+                ? `Tipo de Dano: ${dmgInfo.damageType}`
+                : 'Dano Mágico',
+              kind: dmgInfo.isHeal ? 'heal' : 'damage',
+            })
+          }
+        />
+      ) : null}
+
       <SectionCard title="Propriedades da Magia" icon="sparkles-outline">
         <InfoRow label="Tempo de Conjuração" value={item.casting_time} />
         <InfoRow label="Alcance" value={item.range} />
         <InfoRow label="Duração" value={item.duration} />
         <InfoRow label="Componentes" value={components} />
         <InfoRow label="Material" value={item.material} />
-        {item.damage?.damage_type?.name ? (
-          <InfoRow label="Tipo de Dano" value={item.damage.damage_type.name} />
+        {dmgInfo.damageType ? (
+          <InfoRow
+            label={dmgInfo.isHeal ? 'Efeito' : 'Tipo de Dano'}
+            value={
+              dmgInfo.damageDice
+                ? `${dmgInfo.damageDice} (${dmgInfo.damageType})`
+                : dmgInfo.damageType
+            }
+          />
         ) : null}
       </SectionCard>
 
@@ -124,8 +162,9 @@ function renderSpellDetails(item) {
   );
 }
 
-function renderEquipmentDetails(item) {
+function renderEquipmentDetails(item, onQuickRoll) {
   const cost = item.cost ? `${item.cost.quantity} ${item.cost.unit}` : null;
+  const weaponInfo = extractWeaponInfo(item);
   const damage = item.damage
     ? `${item.damage.damage_dice} (${item.damage.damage_type?.name || ''})`
     : null;
@@ -144,6 +183,26 @@ function renderEquipmentDetails(item) {
 
   return (
     <>
+      {weaponInfo.damageDice ? (
+        <CustomButton
+          title={`Rolar Dano (${weaponInfo.damageDice}${
+            weaponInfo.damageType ? ` • ${weaponInfo.damageType}` : ''
+          })`}
+          icon="flame"
+          variant="danger"
+          onPress={() =>
+            onQuickRoll({
+              expression: weaponInfo.damageDice,
+              title: `Dano • ${item.name}`,
+              subtitle: weaponInfo.damageType
+                ? `Tipo de Dano: ${weaponInfo.damageType}`
+                : 'Dano da Arma',
+              kind: 'damage',
+            })
+          }
+        />
+      ) : null}
+
       <SectionCard title="Especificações" icon="hammer-outline">
         <InfoRow label="Categoria" value={item.equipment_category?.name} />
         <InfoRow label="Subcategoria" value={item.weapon_category || item.armor_category || item.gear_category?.name} />
@@ -273,6 +332,23 @@ export default function ApiItemDetailScreen() {
   const [item, setItem] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [activeRoll, setActiveRoll] = useState(null);
+  const [lastRollConfig, setLastRollConfig] = useState(null);
+
+  async function executeQuickRoll(config) {
+    const rolled = rollDiceExpression(config.expression, config.extraModifier || 0, 0);
+    setLastRollConfig(config);
+    setActiveRoll({
+      ...rolled,
+      title: config.title,
+      subtitle: config.subtitle,
+      kind: config.kind,
+    });
+    await addDiceRoll({
+      ...rolled,
+      label: config.title,
+    });
+  }
 
   const loadDetail = useCallback(async () => {
     setLoading(true);
@@ -322,12 +398,21 @@ export default function ApiItemDetailScreen() {
             </Text>
           </View>
 
-          {category === 'spells' && renderSpellDetails(item)}
-          {category === 'equipment' && renderEquipmentDetails(item)}
+          {category === 'spells' && renderSpellDetails(item, executeQuickRoll)}
+          {category === 'equipment' && renderEquipmentDetails(item, executeQuickRoll)}
           {category === 'races' && renderRaceDetails(item)}
           {category === 'classes' && renderClassDetails(item)}
         </ScrollView>
       )}
+
+      <QuickRollModal
+        visible={Boolean(activeRoll)}
+        roll={activeRoll}
+        onReroll={() => {
+          if (lastRollConfig) executeQuickRoll(lastRollConfig);
+        }}
+        onClose={() => setActiveRoll(null)}
+      />
     </SafeAreaView>
   );
 }

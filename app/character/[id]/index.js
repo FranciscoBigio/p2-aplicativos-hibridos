@@ -16,13 +16,19 @@ import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SPACING, RADIUS, FONT_SIZE, LAYOUT } from '../../../src/theme/colors';
 import LoadingView from '../../../src/components/LoadingView';
 import StatBox from '../../../src/components/StatBox';
-import { getCharacterById, updateCharacter } from '../../../src/services/storage';
+import QuickRollModal from '../../../src/components/QuickRollModal';
+import {
+  getCharacterById,
+  updateCharacter,
+  addDiceRoll,
+} from '../../../src/services/storage';
 import {
   ATTRIBUTES,
   SKILLS,
   calculateModifier,
   formatModifier,
   calculateProficiencyBonus,
+  rollDiceExpression,
 } from '../../../src/utils/dndRules';
 
 export default function CharacterOverviewScreen() {
@@ -33,6 +39,8 @@ export default function CharacterOverviewScreen() {
 
   const [character, setCharacter] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [activeRoll, setActiveRoll] = useState(null);
+  const [lastRollConfig, setLastRollConfig] = useState(null);
 
   const loadCharacter = useCallback(async () => {
     if (!characterId) {
@@ -103,22 +111,36 @@ export default function CharacterOverviewScreen() {
     await updateCharacter(character.id, { proficientSkills: next });
   }
 
-  function openRoll(modValue, label) {
-    router.push({
-      pathname: '/(tabs)/dice',
-      params: {
-        sides: '20',
-        modifier: String(modValue),
-        label,
-      },
+  async function executeQuickRoll(config) {
+    const rolled = rollDiceExpression('1d20', config.modifier);
+    setLastRollConfig(config);
+    setActiveRoll({
+      ...rolled,
+      title: config.title,
+      subtitle: config.subtitle,
+      kind: 'check',
+    });
+    await addDiceRoll({
+      ...rolled,
+      label: `${config.title} • ${character?.name || ''}`,
+    });
+  }
+
+  function openRoll(modValue, title, subtitle = 'Teste de d20') {
+    executeQuickRoll({
+      modifier: modValue,
+      title,
+      subtitle,
     });
   }
 
   return (
-    <ScrollView
-      style={styles.container}
-      contentContainerStyle={styles.scrollContent}
-    >
+    <View style={styles.root}>
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+      >
       <View style={styles.heroCard}>
         <View style={styles.heroHeader}>
           <View style={styles.heroAvatar}>
@@ -146,11 +168,17 @@ export default function CharacterOverviewScreen() {
           <Text style={styles.vitalValue}>{character.armorClass ?? 10}</Text>
           <Text style={styles.vitalLabel}>CA</Text>
         </View>
-        <View style={styles.vitalCard}>
+        <TouchableOpacity
+          style={styles.vitalCard}
+          activeOpacity={0.78}
+          onPress={() =>
+            openRoll(initiative, 'Iniciativa', 'Ordem de Combate (1d20 + DES)')
+          }
+        >
           <Ionicons name="flash" size={18} color={COLORS.primaryLight} />
           <Text style={styles.vitalValue}>{formatModifier(initiative)}</Text>
           <Text style={styles.vitalLabel}>Iniciativa</Text>
-        </View>
+        </TouchableOpacity>
         <View style={styles.vitalCard}>
           <Ionicons name="ribbon" size={18} color={COLORS.magicLight} />
           <Text style={styles.vitalValue}>{formatModifier(profBonus)}</Text>
@@ -234,7 +262,11 @@ export default function CharacterOverviewScreen() {
                 label={attr.label}
                 score={score}
                 onPress={() =>
-                  openRoll(mod, `Teste de ${attr.label} • ${character.name}`)
+                  openRoll(
+                    mod,
+                    `Teste de ${attr.label}`,
+                    `Atributo ${attr.short} (${formatModifier(mod)})`
+                  )
                 }
               />
             );
@@ -269,7 +301,13 @@ export default function CharacterOverviewScreen() {
                 <Text style={styles.saveName}>{attr.short}</Text>
                 <TouchableOpacity
                   onPress={() =>
-                    openRoll(total, `Salvaguarda ${attr.label} • ${character.name}`)
+                    openRoll(
+                      total,
+                      `Salvaguarda • ${attr.label}`,
+                      isProf
+                        ? `${attr.short} + Proficiência (${formatModifier(total)})`
+                        : `Teste de Resistência (${formatModifier(total)})`
+                    )
                   }
                   style={styles.saveModPill}
                 >
@@ -326,7 +364,13 @@ export default function CharacterOverviewScreen() {
                     isProf && styles.skillModBtnActive,
                   ]}
                   onPress={() =>
-                    openRoll(total, `${skill.name} • ${character.name}`)
+                    openRoll(
+                      total,
+                      `Perícia • ${skill.name}`,
+                      `${attrInfo?.short || skill.ability.toUpperCase()}${
+                        isProf ? ' + Proficiência' : ''
+                      } (${formatModifier(total)})`
+                    )
                   }
                 >
                   <Text
@@ -359,14 +403,27 @@ export default function CharacterOverviewScreen() {
           </View>
         </View>
       ) : null}
-    </ScrollView>
+      </ScrollView>
+
+      <QuickRollModal
+        visible={Boolean(activeRoll)}
+        roll={activeRoll}
+        onReroll={() => {
+          if (lastRollConfig) executeQuickRoll(lastRollConfig);
+        }}
+        onClose={() => setActiveRoll(null)}
+      />
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  root: {
     flex: 1,
     backgroundColor: COLORS.background,
+  },
+  container: {
+    flex: 1,
   },
   scrollContent: {
     padding: SPACING.lg,
