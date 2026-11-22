@@ -11,7 +11,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { COLORS, SPACING, RADIUS, FONT_SIZE } from '../../src/theme/colors';
+import { COLORS, SPACING, RADIUS, FONT_SIZE, LAYOUT } from '../../src/theme/colors';
 import CustomButton from '../../src/components/CustomButton';
 import {
   getSession,
@@ -219,6 +219,9 @@ const styles = StyleSheet.create({
     padding: SPACING.lg,
     gap: SPACING.lg,
     paddingBottom: SPACING.xxl,
+    width: '100%',
+    maxWidth: LAYOUT.maxContentWidth,
+    alignSelf: 'center',
   },
   screenTitle: {
     color: COLORS.textPrimary,

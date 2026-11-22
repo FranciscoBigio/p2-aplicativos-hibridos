@@ -16,7 +16,7 @@ import {
   useRouter,
 } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { COLORS, SPACING, RADIUS, FONT_SIZE } from '../../../src/theme/colors';
+import { COLORS, SPACING, RADIUS, FONT_SIZE, LAYOUT } from '../../../src/theme/colors';
 import LoadingView from '../../../src/components/LoadingView';
 import CustomButton from '../../../src/components/CustomButton';
 import CustomInput from '../../../src/components/CustomInput';
@@ -464,6 +464,9 @@ const styles = StyleSheet.create({
     padding: SPACING.lg,
     gap: SPACING.md,
     paddingBottom: SPACING.xxl,
+    width: '100%',
+    maxWidth: LAYOUT.maxContentWidth,
+    alignSelf: 'center',
   },
   sectionCard: {
     backgroundColor: COLORS.card,
@@ -652,6 +655,9 @@ const styles = StyleSheet.create({
   },
   modalCard: {
     height: '82%',
+    width: '100%',
+    maxWidth: LAYOUT.maxContentWidth,
+    alignSelf: 'center',
     backgroundColor: COLORS.background,
     borderTopLeftRadius: RADIUS.xl,
     borderTopRightRadius: RADIUS.xl,

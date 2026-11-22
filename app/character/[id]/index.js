@@ -13,7 +13,7 @@ import {
   useRouter,
 } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { COLORS, SPACING, RADIUS, FONT_SIZE } from '../../../src/theme/colors';
+import { COLORS, SPACING, RADIUS, FONT_SIZE, LAYOUT } from '../../../src/theme/colors';
 import LoadingView from '../../../src/components/LoadingView';
 import StatBox from '../../../src/components/StatBox';
 import { getCharacterById, updateCharacter } from '../../../src/services/storage';
@@ -372,6 +372,9 @@ const styles = StyleSheet.create({
     padding: SPACING.lg,
     gap: SPACING.md,
     paddingBottom: SPACING.xxl,
+    width: '100%',
+    maxWidth: LAYOUT.maxContentWidth,
+    alignSelf: 'center',
   },
   heroCard: {
     backgroundColor: COLORS.card,

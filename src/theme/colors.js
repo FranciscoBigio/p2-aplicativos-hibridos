@@ -53,4 +53,9 @@ export const FONT_SIZE = {
   title: 28,
 };
 
+export const LAYOUT = {
+  maxAuthWidth: 460,
+  maxContentWidth: 760,
+};
+
 export default COLORS;

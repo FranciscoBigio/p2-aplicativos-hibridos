@@ -12,7 +12,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { COLORS, SPACING, RADIUS, FONT_SIZE } from '../../src/theme/colors';
+import { COLORS, SPACING, RADIUS, FONT_SIZE, LAYOUT } from '../../src/theme/colors';
 import CustomInput from '../../src/components/CustomInput';
 import CustomButton from '../../src/components/CustomButton';
 import LoadingView from '../../src/components/LoadingView';
@@ -255,6 +255,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.lg,
     paddingTop: SPACING.md,
     paddingBottom: SPACING.sm,
+    width: '100%',
+    maxWidth: LAYOUT.maxContentWidth,
+    alignSelf: 'center',
   },
   headerText: {
     flex: 1,
@@ -280,6 +283,9 @@ const styles = StyleSheet.create({
   searchWrap: {
     paddingHorizontal: SPACING.lg,
     paddingTop: SPACING.sm,
+    width: '100%',
+    maxWidth: LAYOUT.maxContentWidth,
+    alignSelf: 'center',
   },
   searchInput: {
     marginBottom: SPACING.sm,
@@ -288,6 +294,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.lg,
     paddingBottom: SPACING.xxl,
     gap: SPACING.md,
+    width: '100%',
+    maxWidth: LAYOUT.maxContentWidth,
+    alignSelf: 'center',
   },
   emptyListContainer: {
     flexGrow: 1,

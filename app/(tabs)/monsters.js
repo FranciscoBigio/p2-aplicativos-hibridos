@@ -10,7 +10,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { COLORS, SPACING, RADIUS, FONT_SIZE } from '../../src/theme/colors';
+import { COLORS, SPACING, RADIUS, FONT_SIZE, LAYOUT } from '../../src/theme/colors';
 import CustomInput from '../../src/components/CustomInput';
 import LoadingView from '../../src/components/LoadingView';
 import { fetchMonsters } from '../../src/services/dndApi';
@@ -248,6 +248,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.lg,
     paddingTop: SPACING.md,
     paddingBottom: SPACING.xs,
+    width: '100%',
+    maxWidth: LAYOUT.maxContentWidth,
+    alignSelf: 'center',
   },
   headerRow: {
     flexDirection: 'row',
@@ -281,12 +284,18 @@ const styles = StyleSheet.create({
   searchWrap: {
     paddingHorizontal: SPACING.lg,
     paddingTop: SPACING.sm,
+    width: '100%',
+    maxWidth: LAYOUT.maxContentWidth,
+    alignSelf: 'center',
   },
   searchInput: {
     marginBottom: SPACING.sm,
   },
   filterContainer: {
     marginBottom: SPACING.sm,
+    width: '100%',
+    maxWidth: LAYOUT.maxContentWidth,
+    alignSelf: 'center',
   },
   filterRow: {
     paddingHorizontal: SPACING.lg,
@@ -321,6 +330,9 @@ const styles = StyleSheet.create({
     paddingTop: SPACING.xs,
     paddingBottom: SPACING.xxl,
     gap: SPACING.sm,
+    width: '100%',
+    maxWidth: LAYOUT.maxContentWidth,
+    alignSelf: 'center',
   },
   emptyList: {
     flexGrow: 1,
