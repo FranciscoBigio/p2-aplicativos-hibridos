@@ -13,6 +13,7 @@ import { COLORS, SPACING, RADIUS, FONT_SIZE } from '../../src/theme/colors';
 import CustomButton from '../../src/components/CustomButton';
 import LoadingView from '../../src/components/LoadingView';
 import { fetchRaceDetail, fetchClassDetail } from '../../src/services/dndApi';
+import { saveCharacter } from '../../src/services/storage';
 import {
   ATTRIBUTES,
   POINT_BUY_BUDGET,
@@ -23,6 +24,7 @@ import {
   calculateInitialHP,
   calculateBaseAC,
   extractRacialBonuses,
+  getDefaultSpellSlots,
 } from '../../src/utils/dndRules';
 
 const INITIAL_ATTRIBUTES = {
@@ -52,6 +54,8 @@ export default function Step2AttributesScreen() {
   const [raceDetail, setRaceDetail] = useState(null);
   const [classDetail, setClassDetail] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState('');
   const [error, setError] = useState(null);
 
   const loadRulesData = useCallback(async () => {
@@ -110,6 +114,49 @@ export default function Step2AttributesScreen() {
       if (diff > remainingPoints) return prev;
       return { ...prev, [key]: next };
     });
+  }
+
+  async function handleSaveCharacter() {
+    setSaveError('');
+    setSaving(true);
+    try {
+      const savingThrows = Array.isArray(classDetail?.saving_throws)
+        ? classDetail.saving_throws.map((s) => s.index.toLowerCase())
+        : [];
+      const traits = Array.isArray(raceDetail?.traits)
+        ? raceDetail.traits.map((t) => t.name)
+        : [];
+
+      await saveCharacter({
+        name: String(name || 'Aventureiro Sem Nome').trim(),
+        background: String(background || 'Herói do Povo').trim(),
+        level: 1,
+        raceIndex: String(raceIndex || raceDetail?.index || 'human'),
+        raceName: String(raceName || raceDetail?.name || 'Human'),
+        classIndex: String(classIndex || classDetail?.index || 'fighter'),
+        className: String(className || classDetail?.name || 'Fighter'),
+        hitDie,
+        speed,
+        attributes: finalAttributes,
+        racialBonuses,
+        maxHp: initialHp,
+        currentHp: initialHp,
+        armorClass: baseAc,
+        savingThrows,
+        proficientSkills: [],
+        traits,
+        coins: { gp: 15, sp: 10, cp: 0 },
+        inventory: [],
+        spells: [],
+        spellSlots: getDefaultSpellSlots(String(classIndex || '')),
+      });
+
+      router.replace('/(tabs)');
+    } catch {
+      setSaveError('Não foi possível salvar o personagem. Tente novamente.');
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
@@ -258,11 +305,19 @@ export default function Step2AttributesScreen() {
             })}
           </View>
 
+          {saveError ? (
+            <View style={styles.errorBanner}>
+              <Ionicons name="warning-outline" size={16} color={COLORS.danger} />
+              <Text style={styles.errorBannerText}>{saveError}</Text>
+            </View>
+          ) : null}
+
           <CustomButton
             title="Salvar Personagem"
             icon="checkmark-circle-outline"
             size="lg"
-            onPress={() => {}}
+            loading={saving}
+            onPress={handleSaveCharacter}
           />
         </ScrollView>
       )}
@@ -483,5 +538,20 @@ const styles = StyleSheet.create({
     color: COLORS.primaryLight,
     fontSize: FONT_SIZE.xs,
     fontWeight: '800',
+  },
+  errorBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+    backgroundColor: COLORS.dangerMuted,
+    borderWidth: 1,
+    borderColor: COLORS.danger,
+    borderRadius: RADIUS.md,
+    padding: SPACING.md,
+  },
+  errorBannerText: {
+    flex: 1,
+    color: COLORS.textPrimary,
+    fontSize: FONT_SIZE.sm,
   },
 });
