@@ -72,6 +72,24 @@ export async function fetchEquipmentDetail(index) {
   return apiFetch(`/equipment/${index}`);
 }
 
+const CR_FILTER_MAP = {
+  low: '0,0.125,0.25,0.5,1,2,3,4',
+  mid: '5,6,7,8,9,10',
+  high: '11,12,13,14,15,16,17,18,19,20,21,22,23,24,30',
+};
+
+export async function fetchMonsters(crBand = 'all') {
+  const query = CR_FILTER_MAP[crBand]
+    ? `/monsters?challenge_rating=${CR_FILTER_MAP[crBand]}`
+    : '/monsters';
+  const data = await apiFetch(query);
+  return data.results || [];
+}
+
+export async function fetchMonsterDetail(index) {
+  return apiFetch(`/monsters/${index}`);
+}
+
 export async function fetchCompendiumList(category) {
   switch (category) {
     case 'spells':
