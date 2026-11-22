@@ -35,6 +35,62 @@ function formatSpeed(speed) {
     .join(' • ');
 }
 
+function formatSenses(senses) {
+  if (!senses || typeof senses !== 'object') return null;
+  const entries = Object.entries(senses).map(
+    ([key, val]) => `${key.replace(/_/g, ' ')}: ${val}`
+  );
+  return entries.length > 0 ? entries.join(' • ') : null;
+}
+
+function formatProficiencies(proficiencies) {
+  if (!Array.isArray(proficiencies) || proficiencies.length === 0) return null;
+  return proficiencies
+    .map((p) => `${p.proficiency?.name || ''} ${formatModifier(p.value)}`)
+    .join(' • ');
+}
+
+function DetailLine({ label, value }) {
+  if (!value) return null;
+  return (
+    <View style={styles.detailLine}>
+      <Text style={styles.detailLabel}>{label}</Text>
+      <Text style={styles.detailValue}>{value}</Text>
+    </View>
+  );
+}
+
+function FeatureSection({ title, icon, accentColor = COLORS.primary, items }) {
+  if (!Array.isArray(items) || items.length === 0) return null;
+  return (
+    <View style={styles.sectionCard}>
+      <View style={styles.sectionHeader}>
+        <Ionicons name={icon} size={17} color={accentColor} />
+        <Text style={[styles.sectionTitle, { color: accentColor }]}>{title}</Text>
+      </View>
+      <View style={styles.featureList}>
+        {items.map((entry, idx) => (
+          <View key={`${entry.name}_${idx}`} style={styles.featureItem}>
+            <View style={styles.featureNameRow}>
+              <Text style={styles.featureName}>{entry.name}</Text>
+              {entry.attack_bonus !== undefined ? (
+                <View style={styles.attackBadge}>
+                  <Text style={styles.attackBadgeText}>
+                    {formatModifier(entry.attack_bonus)} acerto
+                  </Text>
+                </View>
+              ) : null}
+            </View>
+            {entry.desc ? (
+              <Text style={styles.featureDesc}>{entry.desc}</Text>
+            ) : null}
+          </View>
+        ))}
+      </View>
+    </View>
+  );
+}
+
 export default function MonsterDetailScreen() {
   const router = useRouter();
   const { index } = useLocalSearchParams();
@@ -60,6 +116,29 @@ export default function MonsterDetailScreen() {
       loadMonster();
     }
   }, [index, loadMonster]);
+
+  const profText = formatProficiencies(monster?.proficiencies);
+  const sensesText = formatSenses(monster?.senses);
+  const vulnText =
+    Array.isArray(monster?.damage_vulnerabilities) &&
+    monster.damage_vulnerabilities.length > 0
+      ? monster.damage_vulnerabilities.join(', ')
+      : null;
+  const resistText =
+    Array.isArray(monster?.damage_resistances) &&
+    monster.damage_resistances.length > 0
+      ? monster.damage_resistances.join(', ')
+      : null;
+  const dmgImmText =
+    Array.isArray(monster?.damage_immunities) &&
+    monster.damage_immunities.length > 0
+      ? monster.damage_immunities.join(', ')
+      : null;
+  const condImmText =
+    Array.isArray(monster?.condition_immunities) &&
+    monster.condition_immunities.length > 0
+      ? monster.condition_immunities.map((c) => c.name).join(', ')
+      : null;
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -144,6 +223,53 @@ export default function MonsterDetailScreen() {
               })}
             </View>
           </View>
+
+          <View style={styles.sectionCard}>
+            <View style={styles.sectionHeader}>
+              <Ionicons name="eye-outline" size={17} color={COLORS.primary} />
+              <Text style={styles.sectionTitle}>
+                Defesas, Sentidos e Proficiências
+              </Text>
+            </View>
+            <DetailLine label="Proficiências" value={profText} />
+            <DetailLine label="Vulnerabilidades a Dano" value={vulnText} />
+            <DetailLine label="Resistências a Dano" value={resistText} />
+            <DetailLine label="Imunidades a Dano" value={dmgImmText} />
+            <DetailLine label="Imunidades a Condições" value={condImmText} />
+            <DetailLine label="Sentidos" value={sensesText} />
+            <DetailLine
+              label="Idiomas"
+              value={monster.languages || 'Nenhum'}
+            />
+          </View>
+
+          <FeatureSection
+            title="Habilidades Especiais"
+            icon="sparkles-outline"
+            accentColor={COLORS.magicLight}
+            items={monster.special_abilities}
+          />
+
+          <FeatureSection
+            title="Ações"
+            icon="flash-outline"
+            accentColor={COLORS.danger}
+            items={monster.actions}
+          />
+
+          <FeatureSection
+            title="Reações"
+            icon="return-up-back-outline"
+            accentColor={COLORS.primaryLight}
+            items={monster.reactions}
+          />
+
+          <FeatureSection
+            title="Ações Lendárias"
+            icon="trophy-outline"
+            accentColor={COLORS.primary}
+            items={monster.legendary_actions}
+          />
         </ScrollView>
       )}
     </SafeAreaView>
@@ -332,5 +458,60 @@ const styles = StyleSheet.create({
     color: COLORS.primaryLight,
     fontSize: FONT_SIZE.sm,
     fontWeight: '700',
+  },
+  detailLine: {
+    gap: 2,
+  },
+  detailLabel: {
+    color: COLORS.textSecondary,
+    fontSize: FONT_SIZE.xs,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+  },
+  detailValue: {
+    color: COLORS.textPrimary,
+    fontSize: FONT_SIZE.sm,
+    lineHeight: 20,
+  },
+  featureList: {
+    gap: SPACING.md,
+  },
+  featureItem: {
+    backgroundColor: COLORS.surfaceElevated,
+    borderRadius: RADIUS.md,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    padding: SPACING.md,
+    gap: 6,
+  },
+  featureNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    gap: SPACING.xs,
+  },
+  featureName: {
+    color: COLORS.textPrimary,
+    fontSize: FONT_SIZE.md,
+    fontWeight: '800',
+  },
+  attackBadge: {
+    backgroundColor: COLORS.dangerMuted,
+    borderWidth: 1,
+    borderColor: COLORS.danger,
+    borderRadius: RADIUS.full,
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: 2,
+  },
+  attackBadgeText: {
+    color: COLORS.textPrimary,
+    fontSize: FONT_SIZE.xs,
+    fontWeight: '700',
+  },
+  featureDesc: {
+    color: COLORS.textSecondary,
+    fontSize: FONT_SIZE.sm,
+    lineHeight: 20,
   },
 });
