@@ -5,48 +5,92 @@ import {
   StyleSheet,
   FlatList,
   TouchableOpacity,
+  ScrollView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SPACING, RADIUS, FONT_SIZE } from '../../src/theme/colors';
 import CustomInput from '../../src/components/CustomInput';
 import LoadingView from '../../src/components/LoadingView';
 import { fetchMonsters } from '../../src/services/dndApi';
+import {
+  getFavoriteMonsters,
+  toggleFavoriteMonster,
+} from '../../src/services/storage';
+import { formatChallengeRating } from '../../src/utils/dndRules';
+
+const MONSTER_FILTERS = [
+  { key: 'all', label: 'Todos', icon: 'apps-outline' },
+  { key: 'favorites', label: 'Favoritos', icon: 'star' },
+  { key: 'low', label: 'ND Baixo 0-4', icon: 'shield-outline' },
+  { key: 'mid', label: 'ND Médio 5-10', icon: 'flame-outline' },
+  { key: 'high', label: 'ND Alto 11+', icon: 'skull-outline' },
+];
 
 export default function MonstersScreen() {
   const router = useRouter();
+  const [filter, setFilter] = useState('all');
   const [monsters, setMonsters] = useState([]);
+  const [favorites, setFavorites] = useState([]);
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
+  const loadFavorites = useCallback(async () => {
+    const stored = await getFavoriteMonsters();
+    setFavorites(stored);
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadFavorites();
+    }, [loadFavorites])
+  );
+
   const loadMonsters = useCallback(async () => {
+    if (filter === 'favorites') {
+      setLoading(false);
+      setError(null);
+      return;
+    }
+
     setLoading(true);
     setError(null);
     try {
-      const results = await fetchMonsters('all');
+      const results = await fetchMonsters(filter);
       setMonsters(results);
     } catch (err) {
       setError(err.message);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [filter]);
 
   useEffect(() => {
     loadMonsters();
   }, [loadMonsters]);
 
-  const filteredMonsters = useMemo(() => {
+  const favoriteIndexSet = useMemo(
+    () => new Set(favorites.map((f) => f.index)),
+    [favorites]
+  );
+
+  const displayedMonsters = useMemo(() => {
+    const source = filter === 'favorites' ? favorites : monsters;
     const q = search.trim().toLowerCase();
-    if (!q) return monsters;
-    return monsters.filter(
+    if (!q) return source;
+    return source.filter(
       (m) =>
         (m.name || '').toLowerCase().includes(q) ||
         (m.index || '').toLowerCase().includes(q)
     );
-  }, [monsters, search]);
+  }, [filter, favorites, monsters, search]);
+
+  async function handleToggleFavorite(monster) {
+    const result = await toggleFavoriteMonster(monster);
+    setFavorites(result.favorites);
+  }
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
@@ -56,13 +100,13 @@ export default function MonstersScreen() {
           {!loading && !error ? (
             <View style={styles.countBadge}>
               <Text style={styles.countText}>
-                {filteredMonsters.length} monstros
+                {displayedMonsters.length} monstros
               </Text>
             </View>
           ) : null}
         </View>
         <Text style={styles.subtitle}>
-          Consulte criaturas e Stat Blocks direto da API oficial
+          Filtre por Nível de Desafio (ND) e favorite criaturas
         </Text>
       </View>
 
@@ -77,50 +121,118 @@ export default function MonstersScreen() {
         />
       </View>
 
+      <View style={styles.filterContainer}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.filterRow}
+        >
+          {MONSTER_FILTERS.map((item) => {
+            const isActive = filter === item.key;
+            return (
+              <TouchableOpacity
+                key={item.key}
+                activeOpacity={0.8}
+                style={[styles.chip, isActive && styles.chipActive]}
+                onPress={() => setFilter(item.key)}
+              >
+                <Ionicons
+                  name={item.icon}
+                  size={15}
+                  color={
+                    isActive
+                      ? COLORS.white
+                      : item.key === 'favorites'
+                      ? COLORS.primaryLight
+                      : COLORS.textSecondary
+                  }
+                />
+                <Text style={[styles.chipText, isActive && styles.chipTextActive]}>
+                  {item.label}
+                  {item.key === 'favorites' ? ` (${favorites.length})` : ''}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+      </View>
+
       {loading ? (
         <LoadingView message="Invocando bestiário da API D&D 5e..." />
       ) : error ? (
         <LoadingView error={error} onRetry={loadMonsters} />
       ) : (
         <FlatList
-          data={filteredMonsters}
+          data={displayedMonsters}
           keyExtractor={(item) => item.index}
           contentContainerStyle={
-            filteredMonsters.length === 0 ? styles.emptyList : styles.listContent
+            displayedMonsters.length === 0 ? styles.emptyList : styles.listContent
           }
           ListEmptyComponent={
             <View style={styles.emptyWrap}>
-              <Ionicons name="skull-outline" size={46} color={COLORS.textMuted} />
-              <Text style={styles.emptyTitle}>Nenhum monstro encontrado</Text>
+              <Ionicons
+                name={filter === 'favorites' ? 'star-outline' : 'skull-outline'}
+                size={46}
+                color={COLORS.textMuted}
+              />
+              <Text style={styles.emptyTitle}>
+                {filter === 'favorites'
+                  ? 'Nenhum monstro favoritado'
+                  : 'Nenhum monstro encontrado'}
+              </Text>
               <Text style={styles.emptySubtitle}>
-                Tente buscar por outro nome em inglês (ex: Wolf, Lich, Beholder).
+                {filter === 'favorites'
+                  ? 'Toque na estrela de qualquer criatura para salvá-la aqui.'
+                  : 'Tente alterar o filtro de ND ou buscar outro nome.'}
               </Text>
             </View>
           }
-          renderItem={({ item }) => (
-            <TouchableOpacity
-              style={styles.card}
-              activeOpacity={0.8}
-              onPress={() => router.push(`/monster/${item.index}`)}
-            >
-              <View style={styles.cardIcon}>
-                <Ionicons name="skull-outline" size={20} color={COLORS.danger} />
-              </View>
-              <View style={styles.cardInfo}>
-                <Text style={styles.cardName} numberOfLines={1}>
-                  {item.name}
-                </Text>
-                <Text style={styles.cardIndex} numberOfLines={1}>
-                  Ver Stat Block completo
-                </Text>
-              </View>
-              <Ionicons
-                name="chevron-forward"
-                size={18}
-                color={COLORS.textMuted}
-              />
-            </TouchableOpacity>
-          )}
+          renderItem={({ item }) => {
+            const isFav = favoriteIndexSet.has(item.index);
+            return (
+              <TouchableOpacity
+                style={styles.card}
+                activeOpacity={0.8}
+                onPress={() => router.push(`/monster/${item.index}`)}
+              >
+                <View style={styles.cardIcon}>
+                  <Ionicons name="skull-outline" size={20} color={COLORS.danger} />
+                </View>
+
+                <View style={styles.cardInfo}>
+                  <Text style={styles.cardName} numberOfLines={1}>
+                    {item.name}
+                  </Text>
+                  <Text style={styles.cardIndex} numberOfLines={1}>
+                    {item.challenge_rating !== undefined &&
+                    item.challenge_rating !== null
+                      ? `ND ${formatChallengeRating(item.challenge_rating)}${
+                          item.type ? ` • ${item.type}` : ''
+                        }`
+                      : 'Toque para abrir o Stat Block completo'}
+                  </Text>
+                </View>
+
+                <TouchableOpacity
+                  style={[styles.starBtn, isFav && styles.starBtnActive]}
+                  onPress={() => handleToggleFavorite(item)}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <Ionicons
+                    name={isFav ? 'star' : 'star-outline'}
+                    size={20}
+                    color={isFav ? COLORS.primaryLight : COLORS.textMuted}
+                  />
+                </TouchableOpacity>
+
+                <Ionicons
+                  name="chevron-forward"
+                  size={18}
+                  color={COLORS.textMuted}
+                />
+              </TouchableOpacity>
+            );
+          }}
         />
       )}
     </SafeAreaView>
@@ -173,6 +285,37 @@ const styles = StyleSheet.create({
   searchInput: {
     marginBottom: SPACING.sm,
   },
+  filterContainer: {
+    marginBottom: SPACING.sm,
+  },
+  filterRow: {
+    paddingHorizontal: SPACING.lg,
+    gap: SPACING.sm,
+  },
+  chip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: COLORS.card,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: RADIUS.full,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+  },
+  chipActive: {
+    backgroundColor: COLORS.primary,
+    borderColor: COLORS.primaryLight,
+  },
+  chipText: {
+    color: COLORS.textSecondary,
+    fontSize: FONT_SIZE.xs + 1,
+    fontWeight: '600',
+  },
+  chipTextActive: {
+    color: COLORS.white,
+    fontWeight: '700',
+  },
   listContent: {
     paddingHorizontal: SPACING.lg,
     paddingTop: SPACING.xs,
@@ -191,7 +334,7 @@ const styles = StyleSheet.create({
     borderColor: COLORS.border,
     borderRadius: RADIUS.md,
     padding: SPACING.md,
-    gap: SPACING.md,
+    gap: SPACING.sm + 2,
   },
   cardIcon: {
     width: 40,
@@ -214,6 +357,19 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZE.xs,
     marginTop: 2,
   },
+  starBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: RADIUS.md,
+    backgroundColor: COLORS.surfaceElevated,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  starBtnActive: {
+    backgroundColor: COLORS.primaryMuted,
+    borderWidth: 1,
+    borderColor: COLORS.primary,
+  },
   emptyWrap: {
     alignItems: 'center',
     justifyContent: 'center',
@@ -229,5 +385,6 @@ const styles = StyleSheet.create({
     color: COLORS.textSecondary,
     fontSize: FONT_SIZE.sm,
     textAlign: 'center',
+    lineHeight: 20,
   },
 });
