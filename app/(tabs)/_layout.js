@@ -1,36 +1,41 @@
 import React from 'react';
 import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { Platform } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { COLORS } from '../../src/theme/colors';
 
 export default function TabsLayout() {
+  const insets = useSafeAreaInsets();
+  const bottomPadding = Math.max(insets.bottom, 10);
+
   return (
     <Tabs
       screenOptions={{
         headerShown: false,
         tabBarActiveTintColor: COLORS.primary,
         tabBarInactiveTintColor: COLORS.textSecondary,
+        tabBarHideOnKeyboard: true,
         tabBarStyle: {
           backgroundColor: COLORS.card,
           borderTopColor: COLORS.border,
           borderTopWidth: 1,
-          height: Platform.OS === 'ios' ? 84 : 64,
-          paddingBottom: Platform.OS === 'ios' ? 24 : 8,
-          paddingTop: 8,
+          height: 54 + bottomPadding,
+          paddingBottom: bottomPadding,
+          paddingTop: 6,
         },
         tabBarLabelStyle: {
-          fontSize: 11,
+          fontSize: 10.5,
           fontWeight: '600',
         },
+        tabBarAllowFontScaling: false,
       }}
     >
       <Tabs.Screen
         name="index"
         options={{
           title: 'Personagens',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="people-outline" size={size} color={color} />
+          tabBarIcon: ({ color }) => (
+            <Ionicons name="people-outline" size={20} color={color} />
           ),
         }}
       />
@@ -38,8 +43,8 @@ export default function TabsLayout() {
         name="compendium"
         options={{
           title: 'Compêndio',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="book-outline" size={size} color={color} />
+          tabBarIcon: ({ color }) => (
+            <Ionicons name="book-outline" size={20} color={color} />
           ),
         }}
       />
@@ -47,8 +52,8 @@ export default function TabsLayout() {
         name="monsters"
         options={{
           title: 'Monstros',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="skull-outline" size={size} color={color} />
+          tabBarIcon: ({ color }) => (
+            <Ionicons name="skull-outline" size={20} color={color} />
           ),
         }}
       />
@@ -56,8 +61,8 @@ export default function TabsLayout() {
         name="dice"
         options={{
           title: 'Dados',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="dice-outline" size={size} color={color} />
+          tabBarIcon: ({ color }) => (
+            <Ionicons name="dice-outline" size={20} color={color} />
           ),
         }}
       />
@@ -65,8 +70,8 @@ export default function TabsLayout() {
         name="profile"
         options={{
           title: 'Perfil',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="person-circle-outline" size={size} color={color} />
+          tabBarIcon: ({ color }) => (
+            <Ionicons name="person-circle-outline" size={20} color={color} />
           ),
         }}
       />

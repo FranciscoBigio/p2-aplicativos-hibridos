@@ -1,12 +1,15 @@
 import React from 'react';
 import { Tabs, useLocalSearchParams, useRouter } from 'expo-router';
-import { TouchableOpacity, Platform } from 'react-native';
+import { TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { COLORS } from '../../../src/theme/colors';
 
 export default function CharacterDetailLayout() {
   const router = useRouter();
   const { id } = useLocalSearchParams();
+  const insets = useSafeAreaInsets();
+  const bottomPadding = Math.max(insets.bottom, 10);
 
   return (
     <Tabs
@@ -20,30 +23,32 @@ export default function CharacterDetailLayout() {
         headerTintColor: COLORS.textPrimary,
         headerTitleStyle: {
           fontWeight: '800',
-          fontSize: 17,
+          fontSize: 15.5,
         },
         headerLeft: () => (
           <TouchableOpacity
             onPress={() => router.back()}
-            style={{ marginLeft: 14, padding: 4 }}
+            style={{ marginLeft: 12, padding: 4 }}
           >
-            <Ionicons name="arrow-back" size={22} color={COLORS.textPrimary} />
+            <Ionicons name="arrow-back" size={21} color={COLORS.textPrimary} />
           </TouchableOpacity>
         ),
         tabBarActiveTintColor: COLORS.primary,
         tabBarInactiveTintColor: COLORS.textSecondary,
+        tabBarHideOnKeyboard: true,
         tabBarStyle: {
           backgroundColor: COLORS.card,
           borderTopColor: COLORS.border,
           borderTopWidth: 1,
-          height: Platform.OS === 'ios' ? 82 : 62,
-          paddingBottom: Platform.OS === 'ios' ? 22 : 8,
+          height: 54 + bottomPadding,
+          paddingBottom: bottomPadding,
           paddingTop: 6,
         },
         tabBarLabelStyle: {
-          fontSize: 11,
+          fontSize: 10.5,
           fontWeight: '700',
         },
+        tabBarAllowFontScaling: false,
       }}
     >
       <Tabs.Screen
@@ -52,8 +57,8 @@ export default function CharacterDetailLayout() {
         options={{
           title: 'Ficha',
           headerTitle: 'Visão Geral da Ficha',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="document-text-outline" size={size} color={color} />
+          tabBarIcon: ({ color }) => (
+            <Ionicons name="document-text-outline" size={20} color={color} />
           ),
         }}
       />
@@ -63,8 +68,8 @@ export default function CharacterDetailLayout() {
         options={{
           title: 'Armas',
           headerTitle: 'Armas & Ataques',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="flash-outline" size={size} color={color} />
+          tabBarIcon: ({ color }) => (
+            <Ionicons name="flash-outline" size={20} color={color} />
           ),
         }}
       />
@@ -74,8 +79,8 @@ export default function CharacterDetailLayout() {
         options={{
           title: 'Inventário',
           headerTitle: 'Mochila & Equipamentos',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="bag-outline" size={size} color={color} />
+          tabBarIcon: ({ color }) => (
+            <Ionicons name="bag-outline" size={20} color={color} />
           ),
         }}
       />
@@ -85,8 +90,8 @@ export default function CharacterDetailLayout() {
         options={{
           title: 'Grimório',
           headerTitle: 'Grimório & Magias',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="sparkles-outline" size={size} color={color} />
+          tabBarIcon: ({ color }) => (
+            <Ionicons name="sparkles-outline" size={20} color={color} />
           ),
         }}
       />

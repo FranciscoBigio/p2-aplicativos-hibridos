@@ -354,10 +354,10 @@ const styles = StyleSheet.create({
     borderRadius: RADIUS.lg,
     borderWidth: 1.5,
     borderColor: COLORS.border,
-    paddingVertical: SPACING.xl,
-    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.lg,
+    paddingHorizontal: SPACING.md,
     alignItems: 'center',
-    gap: SPACING.xs + 2,
+    gap: SPACING.xs,
   },
   resultCritSuccess: {
     borderColor: COLORS.primaryLight,
@@ -406,7 +406,7 @@ const styles = StyleSheet.create({
   },
   resultValue: {
     color: COLORS.textPrimary,
-    fontSize: 58,
+    fontSize: 44,
     fontWeight: '900',
   },
   resultHint: {
@@ -436,10 +436,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: COLORS.border,
     borderRadius: RADIUS.md,
-    paddingVertical: SPACING.md,
+    paddingVertical: SPACING.sm + 2,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 4,
+    gap: 2,
   },
   dieCardActive: {
     backgroundColor: COLORS.primary,

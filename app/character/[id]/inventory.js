@@ -16,6 +16,7 @@ import {
   useRouter,
 } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { COLORS, SPACING, RADIUS, FONT_SIZE, LAYOUT } from '../../../src/theme/colors';
 import LoadingView from '../../../src/components/LoadingView';
 import CustomButton from '../../../src/components/CustomButton';
@@ -35,6 +36,7 @@ const COIN_TYPES = [
 
 export default function CharacterInventoryScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const localParams = useLocalSearchParams();
   const globalParams = useGlobalSearchParams();
   const characterId = String(localParams.id || globalParams.id || '');
@@ -397,7 +399,12 @@ export default function CharacterInventoryScreen() {
         onRequestClose={() => setModalVisible(false)}
       >
         <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
+          <View
+            style={[
+              styles.modalCard,
+              { paddingBottom: Math.max(insets.bottom, SPACING.lg) },
+            ]}
+          >
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Equipamentos D&D 5e</Text>
               <TouchableOpacity

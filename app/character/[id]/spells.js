@@ -16,6 +16,7 @@ import {
   useRouter,
 } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   COLORS,
   SPACING,
@@ -110,6 +111,7 @@ function groupSpellsByLevel(spellsList, collapsedMap = {}, forceExpand = false) 
 
 export default function CharacterSpellsScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const localParams = useLocalSearchParams();
   const globalParams = useGlobalSearchParams();
   const characterId = String(localParams.id || globalParams.id || '');
@@ -822,7 +824,12 @@ export default function CharacterSpellsScreen() {
         onRequestClose={() => setModalVisible(false)}
       >
         <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
+          <View
+            style={[
+              styles.modalCard,
+              { paddingBottom: Math.max(insets.bottom, SPACING.lg) },
+            ]}
+          >
             <View style={styles.modalHeader}>
               <View style={styles.modalHeaderTitleCol}>
                 <Text style={styles.modalTitle}>Aprender Magia</Text>

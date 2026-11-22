@@ -87,21 +87,21 @@ export default function CustomButton({
 
 const styles = StyleSheet.create({
   base: {
-    minHeight: 46,
+    minHeight: 41,
     paddingHorizontal: SPACING.lg,
-    paddingVertical: SPACING.md,
+    paddingVertical: SPACING.sm + 2,
     borderRadius: RADIUS.md,
     borderWidth: 1,
     justifyContent: 'center',
     alignItems: 'center',
   },
   sizeSm: {
-    minHeight: 36,
+    minHeight: 34,
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.xs + 2,
   },
   sizeLg: {
-    minHeight: 52,
+    minHeight: 46,
     paddingHorizontal: SPACING.xl,
   },
   content: {

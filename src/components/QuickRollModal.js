@@ -220,8 +220,8 @@ const styles = StyleSheet.create({
     borderRadius: RADIUS.lg,
     borderWidth: 1,
     borderColor: COLORS.border,
-    paddingVertical: SPACING.xl,
-    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.lg,
+    paddingHorizontal: SPACING.md,
     alignItems: 'center',
     gap: SPACING.xs + 2,
   },
@@ -263,7 +263,7 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   totalText: {
-    fontSize: 60,
+    fontSize: 46,
     fontWeight: '900',
   },
   breakdownText: {

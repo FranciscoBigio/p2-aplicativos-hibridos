@@ -89,13 +89,13 @@ export default function CustomInput({
 const styles = StyleSheet.create({
   wrapper: {
     width: '100%',
-    marginBottom: SPACING.md,
+    marginBottom: SPACING.sm + 2,
   },
   label: {
     color: COLORS.textSecondary,
     fontSize: FONT_SIZE.sm,
     fontWeight: '600',
-    marginBottom: SPACING.xs + 2,
+    marginBottom: SPACING.xs,
   },
   inputContainer: {
     flexDirection: 'row',
@@ -105,7 +105,7 @@ const styles = StyleSheet.create({
     borderColor: COLORS.border,
     borderRadius: RADIUS.md,
     paddingHorizontal: SPACING.md,
-    minHeight: 46,
+    minHeight: 42,
     gap: SPACING.sm,
   },
   multilineContainer: {

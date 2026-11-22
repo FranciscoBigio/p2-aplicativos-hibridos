@@ -15,6 +15,7 @@ import {
   useRouter,
 } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   COLORS,
   SPACING,
@@ -115,6 +116,7 @@ function extractSpellSlotsFromLevel(levelEntry, currentSlots = {}) {
 
 export default function CharacterOverviewScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const localParams = useLocalSearchParams();
   const globalParams = useGlobalSearchParams();
   const characterId = String(localParams.id || globalParams.id || '');
@@ -947,7 +949,12 @@ export default function CharacterOverviewScreen() {
         onRequestClose={() => setLevelUpVisible(false)}
       >
         <View style={styles.bottomSheetOverlay}>
-          <View style={styles.levelUpCard}>
+          <View
+            style={[
+              styles.levelUpCard,
+              { paddingBottom: Math.max(insets.bottom, SPACING.lg) },
+            ]}
+          >
             <View style={styles.modalHeader}>
               <View style={styles.modalTitleCol}>
                 <Text style={styles.descBadge}>Evolução D&D 5e</Text>
