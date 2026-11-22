@@ -11,7 +11,12 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SPACING, RADIUS, FONT_SIZE } from '../../src/theme/colors';
 import LoadingView from '../../src/components/LoadingView';
+import CustomButton from '../../src/components/CustomButton';
 import { fetchMonsterDetail } from '../../src/services/dndApi';
+import {
+  isMonsterFavorite,
+  toggleFavoriteMonster,
+} from '../../src/services/storage';
 import {
   ATTRIBUTES,
   calculateModifier,
@@ -60,7 +65,13 @@ function DetailLine({ label, value }) {
   );
 }
 
-function FeatureSection({ title, icon, accentColor = COLORS.primary, items }) {
+function FeatureSection({
+  title,
+  icon,
+  accentColor = COLORS.primary,
+  items,
+  onRollAttack,
+}) {
   if (!Array.isArray(items) || items.length === 0) return null;
   return (
     <View style={styles.sectionCard}>
@@ -74,11 +85,16 @@ function FeatureSection({ title, icon, accentColor = COLORS.primary, items }) {
             <View style={styles.featureNameRow}>
               <Text style={styles.featureName}>{entry.name}</Text>
               {entry.attack_bonus !== undefined ? (
-                <View style={styles.attackBadge}>
+                <TouchableOpacity
+                  style={styles.attackBadge}
+                  activeOpacity={0.78}
+                  onPress={() => onRollAttack?.(entry)}
+                >
+                  <Ionicons name="dice-outline" size={13} color={COLORS.textPrimary} />
                   <Text style={styles.attackBadgeText}>
                     {formatModifier(entry.attack_bonus)} acerto
                   </Text>
-                </View>
+                </TouchableOpacity>
               ) : null}
             </View>
             {entry.desc ? (
@@ -95,6 +111,7 @@ export default function MonsterDetailScreen() {
   const router = useRouter();
   const { index } = useLocalSearchParams();
   const [monster, setMonster] = useState(null);
+  const [isFavorite, setIsFavorite] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -102,8 +119,12 @@ export default function MonsterDetailScreen() {
     setLoading(true);
     setError(null);
     try {
-      const data = await fetchMonsterDetail(String(index));
+      const [data, favStatus] = await Promise.all([
+        fetchMonsterDetail(String(index)),
+        isMonsterFavorite(String(index)),
+      ]);
       setMonster(data);
+      setIsFavorite(favStatus);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -116,6 +137,28 @@ export default function MonsterDetailScreen() {
       loadMonster();
     }
   }, [index, loadMonster]);
+
+  async function handleToggleFavorite() {
+    if (!monster) return;
+    const res = await toggleFavoriteMonster({
+      index: monster.index,
+      name: monster.name,
+      challenge_rating: monster.challenge_rating,
+      type: monster.type,
+    });
+    setIsFavorite(res.isFavorite);
+  }
+
+  function handleQuickRoll(modifierValue, label) {
+    router.push({
+      pathname: '/(tabs)/dice',
+      params: {
+        sides: '20',
+        modifier: String(modifierValue),
+        label,
+      },
+    });
+  }
 
   const profText = formatProficiencies(monster?.proficiencies);
   const sensesText = formatSenses(monster?.senses);
@@ -152,6 +195,18 @@ export default function MonsterDetailScreen() {
             {monster?.name || 'Monstro'}
           </Text>
         </View>
+        {monster ? (
+          <TouchableOpacity
+            onPress={handleToggleFavorite}
+            style={[styles.iconBtn, isFavorite && styles.favIconBtnActive]}
+          >
+            <Ionicons
+              name={isFavorite ? 'star' : 'star-outline'}
+              size={21}
+              color={isFavorite ? COLORS.primaryLight : COLORS.textPrimary}
+            />
+          </TouchableOpacity>
+        ) : null}
       </View>
 
       {loading ? (
@@ -177,6 +232,32 @@ export default function MonsterDetailScreen() {
                 {(monster.xp ?? 0).toLocaleString('pt-BR')} XP
               </Text>
             </View>
+          </View>
+
+          <View style={styles.quickActionsRow}>
+            <CustomButton
+              title={isFavorite ? 'Favoritado' : 'Favoritar'}
+              icon={isFavorite ? 'star' : 'star-outline'}
+              variant={isFavorite ? 'primary' : 'secondary'}
+              size="sm"
+              onPress={handleToggleFavorite}
+              style={styles.quickActionBtn}
+            />
+            <CustomButton
+              title={`Rolar Iniciativa (${formatModifier(
+                calculateModifier(monster.dexterity ?? 10)
+              )})`}
+              icon="dice-outline"
+              variant="outline"
+              size="sm"
+              onPress={() =>
+                handleQuickRoll(
+                  calculateModifier(monster.dexterity ?? 10),
+                  `Iniciativa • ${monster.name}`
+                )
+              }
+              style={styles.quickActionBtn}
+            />
           </View>
 
           <View style={styles.vitalsRow}>
@@ -255,6 +336,12 @@ export default function MonsterDetailScreen() {
             icon="flash-outline"
             accentColor={COLORS.danger}
             items={monster.actions}
+            onRollAttack={(action) =>
+              handleQuickRoll(
+                action.attack_bonus ?? 0,
+                `${action.name} • ${monster.name}`
+              )
+            }
           />
 
           <FeatureSection
@@ -298,6 +385,18 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.surfaceElevated,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  favIconBtnActive: {
+    backgroundColor: COLORS.primaryMuted,
+    borderWidth: 1,
+    borderColor: COLORS.primary,
+  },
+  quickActionsRow: {
+    flexDirection: 'row',
+    gap: SPACING.sm,
+  },
+  quickActionBtn: {
+    flex: 1,
   },
   topTitleWrap: {
     flex: 1,
@@ -497,12 +596,15 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   attackBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
     backgroundColor: COLORS.dangerMuted,
     borderWidth: 1,
     borderColor: COLORS.danger,
     borderRadius: RADIUS.full,
     paddingHorizontal: SPACING.sm,
-    paddingVertical: 2,
+    paddingVertical: 3,
   },
   attackBadgeText: {
     color: COLORS.textPrimary,
