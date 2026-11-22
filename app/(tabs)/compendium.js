@@ -1,15 +1,19 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   TouchableOpacity,
   ScrollView,
+  FlatList,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SPACING, RADIUS, FONT_SIZE } from '../../src/theme/colors';
 import CustomInput from '../../src/components/CustomInput';
+import LoadingView from '../../src/components/LoadingView';
+import { fetchCompendiumList } from '../../src/services/dndApi';
 
 const CATEGORIES = [
   {
@@ -17,48 +21,88 @@ const CATEGORIES = [
     label: 'Magias',
     icon: 'sparkles-outline',
     color: COLORS.magicLight,
-    endpoint: '/api/spells',
-    description: 'Consulte escolas, níveis, componentes e efeitos das magias.',
+    badgeBg: COLORS.magicMuted,
   },
   {
     key: 'equipment',
     label: 'Equipamentos',
     icon: 'hammer-outline',
     color: COLORS.primaryLight,
-    endpoint: '/api/equipment',
-    description: 'Armas, armaduras, ferramentas e itens de aventura.',
+    badgeBg: COLORS.primaryMuted,
   },
   {
     key: 'races',
     label: 'Raças',
     icon: 'body-outline',
     color: COLORS.success,
-    endpoint: '/api/races',
-    description: 'Bônus de atributo, traços raciais, idiomas e deslocamento.',
+    badgeBg: COLORS.successMuted,
   },
   {
     key: 'classes',
     label: 'Classes',
     icon: 'shield-outline',
     color: COLORS.danger,
-    endpoint: '/api/classes',
-    description: 'Dado de vida, salvaguardas e proficiências de cada classe.',
+    badgeBg: COLORS.dangerMuted,
   },
 ];
 
 export default function CompendiumScreen() {
+  const router = useRouter();
   const [selectedCategory, setSelectedCategory] = useState('spells');
   const [search, setSearch] = useState('');
+  const [items, setItems] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
   const activeCategory =
     CATEGORIES.find((c) => c.key === selectedCategory) || CATEGORIES[0];
 
+  const loadItems = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const results = await fetchCompendiumList(selectedCategory);
+      setItems(results);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }, [selectedCategory]);
+
+  useEffect(() => {
+    loadItems();
+  }, [loadItems]);
+
+  const filteredItems = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return items;
+    return items.filter(
+      (item) =>
+        (item.name || '').toLowerCase().includes(q) ||
+        (item.index || '').toLowerCase().includes(q)
+    );
+  }, [items, search]);
+
+  function handleSelectCategory(key) {
+    if (key === selectedCategory) return;
+    setSelectedCategory(key);
+    setSearch('');
+  }
+
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
       <View style={styles.header}>
-        <Text style={styles.title}>Compêndio D&D 5e</Text>
+        <View style={styles.headerRow}>
+          <Text style={styles.title}>Compêndio D&D 5e</Text>
+          {!loading && !error ? (
+            <View style={styles.countBadge}>
+              <Text style={styles.countText}>{filteredItems.length} itens</Text>
+            </View>
+          ) : null}
+        </View>
         <Text style={styles.subtitle}>
-          Explore o acervo oficial de regras e referências
+          Explore magias, equipamentos, raças e classes em tempo real
         </Text>
       </View>
 
@@ -86,7 +130,7 @@ export default function CompendiumScreen() {
                 key={cat.key}
                 activeOpacity={0.8}
                 style={[styles.chip, isActive && styles.chipActive]}
-                onPress={() => setSelectedCategory(cat.key)}
+                onPress={() => handleSelectCategory(cat.key)}
               >
                 <Ionicons
                   name={cat.icon}
@@ -102,24 +146,71 @@ export default function CompendiumScreen() {
         </ScrollView>
       </View>
 
-      <View style={styles.previewWrap}>
-        <View style={styles.previewCard}>
-          <View style={styles.previewIconWrap}>
-            <Ionicons
-              name={activeCategory.icon}
-              size={30}
-              color={activeCategory.color}
-            />
-          </View>
-          <Text style={styles.previewTitle}>{activeCategory.label}</Text>
-          <Text style={styles.previewDescription}>
-            {activeCategory.description}
-          </Text>
-          <View style={styles.endpointBadge}>
-            <Text style={styles.endpointText}>{activeCategory.endpoint}</Text>
-          </View>
-        </View>
-      </View>
+      {loading ? (
+        <LoadingView message={`Carregando ${activeCategory.label.toLowerCase()} da API D&D 5e...`} />
+      ) : error ? (
+        <LoadingView error={error} onRetry={loadItems} />
+      ) : (
+        <FlatList
+          data={filteredItems}
+          keyExtractor={(item) => item.index}
+          contentContainerStyle={
+            filteredItems.length === 0 ? styles.emptyList : styles.listContent
+          }
+          ListEmptyComponent={
+            <View style={styles.emptyWrap}>
+              <Ionicons name="search-outline" size={44} color={COLORS.textMuted} />
+              <Text style={styles.emptyTitle}>Nenhum resultado encontrado</Text>
+              <Text style={styles.emptySubtitle}>
+                Tente buscar outro termo em {activeCategory.label}.
+              </Text>
+            </View>
+          }
+          renderItem={({ item }) => (
+            <TouchableOpacity
+              style={styles.card}
+              activeOpacity={0.8}
+              onPress={() =>
+                router.push({
+                  pathname: '/details/api-item',
+                  params: {
+                    category: selectedCategory,
+                    index: item.index,
+                    name: item.name,
+                  },
+                })
+              }
+            >
+              <View
+                style={[
+                  styles.cardIcon,
+                  { backgroundColor: activeCategory.badgeBg },
+                ]}
+              >
+                <Ionicons
+                  name={activeCategory.icon}
+                  size={19}
+                  color={activeCategory.color}
+                />
+              </View>
+              <View style={styles.cardInfo}>
+                <Text style={styles.cardName} numberOfLines={1}>
+                  {item.name}
+                </Text>
+                <Text style={styles.cardSub} numberOfLines={1}>
+                  {activeCategory.label}
+                  {item.level !== undefined ? ` • Nível ${item.level}` : ''}
+                </Text>
+              </View>
+              <Ionicons
+                name="chevron-forward"
+                size={18}
+                color={COLORS.textMuted}
+              />
+            </TouchableOpacity>
+          )}
+        />
+      )}
     </SafeAreaView>
   );
 }
@@ -134,10 +225,29 @@ const styles = StyleSheet.create({
     paddingTop: SPACING.md,
     paddingBottom: SPACING.xs,
   },
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: SPACING.sm,
+  },
   title: {
     color: COLORS.textPrimary,
     fontSize: FONT_SIZE.xxl,
     fontWeight: '800',
+  },
+  countBadge: {
+    backgroundColor: COLORS.surfaceElevated,
+    borderWidth: 1,
+    borderColor: COLORS.borderLight,
+    borderRadius: RADIUS.full,
+    paddingHorizontal: SPACING.sm + 2,
+    paddingVertical: 3,
+  },
+  countText: {
+    color: COLORS.primaryLight,
+    fontSize: FONT_SIZE.xs,
+    fontWeight: '700',
   },
   subtitle: {
     color: COLORS.textSecondary,
@@ -152,7 +262,7 @@ const styles = StyleSheet.create({
     marginBottom: SPACING.sm,
   },
   filterContainer: {
-    marginBottom: SPACING.md,
+    marginBottom: SPACING.sm,
   },
   filterRow: {
     paddingHorizontal: SPACING.lg,
@@ -182,54 +292,60 @@ const styles = StyleSheet.create({
     color: COLORS.white,
     fontWeight: '700',
   },
-  previewWrap: {
-    flex: 1,
-    justifyContent: 'center',
-    padding: SPACING.xl,
-  },
-  previewCard: {
-    backgroundColor: COLORS.card,
-    borderRadius: RADIUS.lg,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    padding: SPACING.xl,
-    alignItems: 'center',
+  listContent: {
+    paddingHorizontal: SPACING.lg,
+    paddingTop: SPACING.xs,
+    paddingBottom: SPACING.xxl,
     gap: SPACING.sm,
   },
-  previewIconWrap: {
-    width: 60,
-    height: 60,
-    borderRadius: RADIUS.lg,
-    backgroundColor: COLORS.surfaceElevated,
+  emptyList: {
+    flexGrow: 1,
+    justifyContent: 'center',
+  },
+  card: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.card,
     borderWidth: 1,
-    borderColor: COLORS.borderLight,
+    borderColor: COLORS.border,
+    borderRadius: RADIUS.md,
+    padding: SPACING.md,
+    gap: SPACING.md,
+  },
+  cardIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: RADIUS.md,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: SPACING.xs,
   },
-  previewTitle: {
+  cardInfo: {
+    flex: 1,
+  },
+  cardName: {
     color: COLORS.textPrimary,
-    fontSize: FONT_SIZE.xl,
-    fontWeight: '800',
+    fontSize: FONT_SIZE.md,
+    fontWeight: '700',
   },
-  previewDescription: {
+  cardSub: {
+    color: COLORS.textSecondary,
+    fontSize: FONT_SIZE.xs,
+    marginTop: 2,
+  },
+  emptyWrap: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: SPACING.xxl,
+    gap: SPACING.xs + 2,
+  },
+  emptyTitle: {
+    color: COLORS.textPrimary,
+    fontSize: FONT_SIZE.lg,
+    fontWeight: '700',
+  },
+  emptySubtitle: {
     color: COLORS.textSecondary,
     fontSize: FONT_SIZE.sm,
     textAlign: 'center',
-    lineHeight: 20,
-  },
-  endpointBadge: {
-    marginTop: SPACING.xs,
-    backgroundColor: COLORS.surfaceElevated,
-    borderRadius: RADIUS.full,
-    paddingHorizontal: SPACING.md,
-    paddingVertical: 4,
-    borderWidth: 1,
-    borderColor: COLORS.borderLight,
-  },
-  endpointText: {
-    color: COLORS.primaryLight,
-    fontSize: FONT_SIZE.xs,
-    fontWeight: '700',
   },
 });
