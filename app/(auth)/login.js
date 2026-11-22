@@ -14,7 +14,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SPACING, RADIUS, FONT_SIZE } from '../../src/theme/colors';
 import CustomInput from '../../src/components/CustomInput';
 import CustomButton from '../../src/components/CustomButton';
-import { loginUser } from '../../src/services/storage';
+import { loginUser, loginDemoAccount } from '../../src/services/storage';
 
 export default function LoginScreen() {
   const router = useRouter();
@@ -22,6 +22,20 @@ export default function LoginScreen() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [demoLoading, setDemoLoading] = useState(false);
+
+  async function handleDemoLogin() {
+    setError('');
+    setDemoLoading(true);
+    try {
+      await loginDemoAccount();
+      router.replace('/(tabs)');
+    } catch {
+      setError('Não foi possível iniciar a conta de demonstração.');
+    } finally {
+      setDemoLoading(false);
+    }
+  }
 
   async function handleLogin() {
     setError('');
@@ -106,6 +120,20 @@ export default function LoginScreen() {
               onPress={handleLogin}
               loading={loading}
               size="lg"
+            />
+
+            <View style={styles.dividerRow}>
+              <View style={styles.dividerLine} />
+              <Text style={styles.dividerText}>ou teste agora</Text>
+              <View style={styles.dividerLine} />
+            </View>
+
+            <CustomButton
+              title="Entrar com Conta Demo"
+              icon="sparkles-outline"
+              variant="outline"
+              onPress={handleDemoLogin}
+              loading={demoLoading}
             />
           </View>
 
@@ -198,6 +226,23 @@ const styles = StyleSheet.create({
     color: COLORS.primaryLight,
     fontSize: FONT_SIZE.sm,
     fontWeight: '600',
+  },
+  dividerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+    marginVertical: SPACING.md,
+  },
+  dividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: COLORS.border,
+  },
+  dividerText: {
+    color: COLORS.textMuted,
+    fontSize: FONT_SIZE.xs,
+    fontWeight: '600',
+    textTransform: 'uppercase',
   },
   footerRow: {
     flexDirection: 'row',
