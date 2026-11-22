@@ -16,7 +16,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SPACING, RADIUS, FONT_SIZE } from '../../../src/theme/colors';
 import LoadingView from '../../../src/components/LoadingView';
 import StatBox from '../../../src/components/StatBox';
-import { getCharacterById } from '../../../src/services/storage';
+import { getCharacterById, updateCharacter } from '../../../src/services/storage';
 import {
   ATTRIBUTES,
   calculateModifier,
@@ -69,6 +69,17 @@ export default function CharacterOverviewScreen() {
   const attributes = character.attributes || {};
   const profBonus = calculateProficiencyBonus(character.level || 1);
   const initiative = calculateModifier(attributes.dex ?? 10);
+  const maxHp = Math.max(1, Number(character.maxHp) || 1);
+  const currentHp = Math.max(0, Math.min(maxHp, Number(character.currentHp) ?? maxHp));
+  const hpPercent = Math.round((currentHp / maxHp) * 100);
+  const hpColor =
+    hpPercent > 50 ? COLORS.success : hpPercent > 25 ? COLORS.primary : COLORS.danger;
+
+  async function handleHpChange(nextHp) {
+    const clamped = Math.max(0, Math.min(maxHp, nextHp));
+    setCharacter((prev) => (prev ? { ...prev, currentHp: clamped } : prev));
+    await updateCharacter(character.id, { currentHp: clamped });
+  }
 
   return (
     <ScrollView
@@ -98,13 +109,6 @@ export default function CharacterOverviewScreen() {
 
       <View style={styles.vitalsGrid}>
         <View style={styles.vitalCard}>
-          <Ionicons name="heart" size={18} color={COLORS.danger} />
-          <Text style={styles.vitalValue}>
-            {character.currentHp ?? character.maxHp}/{character.maxHp}
-          </Text>
-          <Text style={styles.vitalLabel}>PV Atual</Text>
-        </View>
-        <View style={styles.vitalCard}>
           <Ionicons name="shield" size={18} color={COLORS.primary} />
           <Text style={styles.vitalValue}>{character.armorClass ?? 10}</Text>
           <Text style={styles.vitalLabel}>CA</Text>
@@ -118,6 +122,65 @@ export default function CharacterOverviewScreen() {
           <Ionicons name="ribbon" size={18} color={COLORS.magicLight} />
           <Text style={styles.vitalValue}>{formatModifier(profBonus)}</Text>
           <Text style={styles.vitalLabel}>Proficiência</Text>
+        </View>
+        <View style={styles.vitalCard}>
+          <Ionicons name="walk" size={18} color={COLORS.success} />
+          <Text style={styles.vitalValue}>{character.speed ?? 30}ft</Text>
+          <Text style={styles.vitalLabel}>Desloc.</Text>
+        </View>
+      </View>
+
+      <View style={styles.hpCard}>
+        <View style={styles.hpHeader}>
+          <View style={styles.hpTitleRow}>
+            <Ionicons name="heart" size={18} color={COLORS.danger} />
+            <Text style={styles.hpTitle}>Pontos de Vida</Text>
+          </View>
+          <Text style={styles.hpCounter}>
+            {currentHp} / {maxHp} PV
+          </Text>
+        </View>
+
+        <View style={styles.hpTrack}>
+          <View
+            style={[
+              styles.hpFill,
+              { width: `${hpPercent}%`, backgroundColor: hpColor },
+            ]}
+          />
+        </View>
+
+        <View style={styles.hpButtonsRow}>
+          <TouchableOpacity
+            style={[styles.hpBtn, styles.hpBtnDamage]}
+            onPress={() => handleHpChange(currentHp - 5)}
+          >
+            <Text style={styles.hpBtnText}>-5</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.hpBtn, styles.hpBtnDamage]}
+            onPress={() => handleHpChange(currentHp - 1)}
+          >
+            <Text style={styles.hpBtnText}>-1</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.hpBtn, styles.hpBtnHeal]}
+            onPress={() => handleHpChange(currentHp + 1)}
+          >
+            <Text style={styles.hpBtnText}>+1</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.hpBtn, styles.hpBtnHeal]}
+            onPress={() => handleHpChange(currentHp + 5)}
+          >
+            <Text style={styles.hpBtnText}>+5</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.hpBtn, styles.hpBtnRest]}
+            onPress={() => handleHpChange(maxHp)}
+          >
+            <Text style={styles.hpBtnRestText}>Máx</Text>
+          </TouchableOpacity>
         </View>
       </View>
 
@@ -250,6 +313,78 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: '700',
     textTransform: 'uppercase',
+  },
+  hpCard: {
+    backgroundColor: COLORS.card,
+    borderRadius: RADIUS.lg,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    padding: SPACING.lg,
+    gap: SPACING.md,
+  },
+  hpHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  hpTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs + 2,
+  },
+  hpTitle: {
+    color: COLORS.textPrimary,
+    fontSize: FONT_SIZE.md,
+    fontWeight: '800',
+  },
+  hpCounter: {
+    color: COLORS.textPrimary,
+    fontSize: FONT_SIZE.lg,
+    fontWeight: '900',
+  },
+  hpTrack: {
+    height: 10,
+    backgroundColor: COLORS.surfaceElevated,
+    borderRadius: RADIUS.full,
+    overflow: 'hidden',
+  },
+  hpFill: {
+    height: '100%',
+    borderRadius: RADIUS.full,
+  },
+  hpButtonsRow: {
+    flexDirection: 'row',
+    gap: SPACING.xs + 2,
+  },
+  hpBtn: {
+    flex: 1,
+    minHeight: 38,
+    borderRadius: RADIUS.sm,
+    borderWidth: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  hpBtnDamage: {
+    backgroundColor: COLORS.dangerMuted,
+    borderColor: COLORS.danger,
+  },
+  hpBtnHeal: {
+    backgroundColor: COLORS.successMuted,
+    borderColor: COLORS.success,
+  },
+  hpBtnRest: {
+    backgroundColor: COLORS.primaryMuted,
+    borderColor: COLORS.primary,
+  },
+  hpBtnText: {
+    color: COLORS.textPrimary,
+    fontSize: FONT_SIZE.sm,
+    fontWeight: '800',
+  },
+  hpBtnRestText: {
+    color: COLORS.primaryLight,
+    fontSize: FONT_SIZE.xs,
+    fontWeight: '800',
   },
   sectionCard: {
     backgroundColor: COLORS.card,
