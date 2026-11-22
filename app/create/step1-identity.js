@@ -5,6 +5,7 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -13,7 +14,12 @@ import { COLORS, SPACING, RADIUS, FONT_SIZE } from '../../src/theme/colors';
 import CustomInput from '../../src/components/CustomInput';
 import CustomButton from '../../src/components/CustomButton';
 import LoadingView from '../../src/components/LoadingView';
-import { fetchRaces, fetchClasses } from '../../src/services/dndApi';
+import {
+  fetchRaces,
+  fetchClasses,
+  fetchRaceDetail,
+  fetchClassDetail,
+} from '../../src/services/dndApi';
 
 const BACKGROUND_SUGGESTIONS = [
   'Acólito',
@@ -33,6 +39,10 @@ export default function Step1IdentityScreen() {
   const [classes, setClasses] = useState([]);
   const [selectedRace, setSelectedRace] = useState(null);
   const [selectedClass, setSelectedClass] = useState(null);
+  const [raceDetail, setRaceDetail] = useState(null);
+  const [classDetail, setClassDetail] = useState(null);
+  const [loadingRaceDetail, setLoadingRaceDetail] = useState(false);
+  const [loadingClassDetail, setLoadingClassDetail] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [formError, setFormError] = useState('');
@@ -59,6 +69,46 @@ export default function Step1IdentityScreen() {
   useEffect(() => {
     loadApiOptions();
   }, [loadApiOptions]);
+
+  useEffect(() => {
+    let active = true;
+    async function loadRaceInfo() {
+      if (!selectedRace?.index) return;
+      setLoadingRaceDetail(true);
+      try {
+        const detail = await fetchRaceDetail(selectedRace.index);
+        if (active) setRaceDetail(detail);
+      } catch {
+        if (active) setRaceDetail(null);
+      } finally {
+        if (active) setLoadingRaceDetail(false);
+      }
+    }
+    loadRaceInfo();
+    return () => {
+      active = false;
+    };
+  }, [selectedRace]);
+
+  useEffect(() => {
+    let active = true;
+    async function loadClassInfo() {
+      if (!selectedClass?.index) return;
+      setLoadingClassDetail(true);
+      try {
+        const detail = await fetchClassDetail(selectedClass.index);
+        if (active) setClassDetail(detail);
+      } catch {
+        if (active) setClassDetail(null);
+      } finally {
+        if (active) setLoadingClassDetail(false);
+      }
+    }
+    loadClassInfo();
+    return () => {
+      active = false;
+    };
+  }, [selectedClass]);
 
   function handleNextStep() {
     setFormError('');
@@ -170,6 +220,56 @@ export default function Step1IdentityScreen() {
                 );
               })}
             </View>
+
+            <View style={styles.detailBox}>
+              {loadingRaceDetail ? (
+                <View style={styles.detailLoadingRow}>
+                  <ActivityIndicator size="small" color={COLORS.primary} />
+                  <Text style={styles.detailLoadingText}>
+                    Buscando traços de {selectedRace?.name}...
+                  </Text>
+                </View>
+              ) : raceDetail ? (
+                <>
+                  <View style={styles.detailHeaderRow}>
+                    <Ionicons name="body-outline" size={16} color={COLORS.success} />
+                    <Text style={styles.detailTitle}>
+                      Traços de {raceDetail.name}
+                    </Text>
+                  </View>
+                  <Text style={styles.detailMeta}>
+                    Deslocamento: {raceDetail.speed} ft • Tamanho: {raceDetail.size}
+                  </Text>
+
+                  {Array.isArray(raceDetail.ability_bonuses) &&
+                  raceDetail.ability_bonuses.length > 0 ? (
+                    <View style={styles.tagsWrap}>
+                      {raceDetail.ability_bonuses.map((b, i) => (
+                        <View key={i} style={styles.bonusTag}>
+                          <Text style={styles.bonusTagText}>
+                            {b.ability_score?.name} +{b.bonus}
+                          </Text>
+                        </View>
+                      ))}
+                    </View>
+                  ) : null}
+
+                  {Array.isArray(raceDetail.traits) && raceDetail.traits.length > 0 ? (
+                    <View style={styles.tagsWrap}>
+                      {raceDetail.traits.map((trait) => (
+                        <View key={trait.index} style={styles.infoTag}>
+                          <Text style={styles.infoTagText}>{trait.name}</Text>
+                        </View>
+                      ))}
+                    </View>
+                  ) : (
+                    <Text style={styles.detailMuted}>
+                      Sem traços especiais adicionais listados.
+                    </Text>
+                  )}
+                </>
+              ) : null}
+            </View>
           </View>
 
           <View style={styles.card}>
@@ -194,6 +294,43 @@ export default function Step1IdentityScreen() {
                   </TouchableOpacity>
                 );
               })}
+            </View>
+
+            <View style={styles.detailBox}>
+              {loadingClassDetail ? (
+                <View style={styles.detailLoadingRow}>
+                  <ActivityIndicator size="small" color={COLORS.primary} />
+                  <Text style={styles.detailLoadingText}>
+                    Buscando proficiências de {selectedClass?.name}...
+                  </Text>
+                </View>
+              ) : classDetail ? (
+                <>
+                  <View style={styles.detailHeaderRow}>
+                    <Ionicons name="shield-outline" size={16} color={COLORS.danger} />
+                    <Text style={styles.detailTitle}>
+                      Proficiências de {classDetail.name}
+                    </Text>
+                  </View>
+                  <Text style={styles.detailMeta}>
+                    Dado de Vida: d{classDetail.hit_die} • Salvaguardas:{' '}
+                    {(classDetail.saving_throws || [])
+                      .map((s) => s.name)
+                      .join(', ') || '—'}
+                  </Text>
+
+                  {Array.isArray(classDetail.proficiencies) &&
+                  classDetail.proficiencies.length > 0 ? (
+                    <View style={styles.tagsWrap}>
+                      {classDetail.proficiencies.slice(0, 8).map((prof) => (
+                        <View key={prof.index} style={styles.infoTag}>
+                          <Text style={styles.infoTagText}>{prof.name}</Text>
+                        </View>
+                      ))}
+                    </View>
+                  ) : null}
+                </>
+              ) : null}
             </View>
           </View>
 
@@ -330,6 +467,74 @@ const styles = StyleSheet.create({
   optionTextActive: {
     color: COLORS.white,
     fontWeight: '800',
+  },
+  detailBox: {
+    marginTop: SPACING.xs,
+    backgroundColor: COLORS.surfaceElevated,
+    borderRadius: RADIUS.md,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    padding: SPACING.md,
+    gap: SPACING.xs + 2,
+  },
+  detailLoadingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+  },
+  detailLoadingText: {
+    color: COLORS.textSecondary,
+    fontSize: FONT_SIZE.xs,
+  },
+  detailHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  detailTitle: {
+    color: COLORS.textPrimary,
+    fontSize: FONT_SIZE.sm,
+    fontWeight: '700',
+  },
+  detailMeta: {
+    color: COLORS.textSecondary,
+    fontSize: FONT_SIZE.xs,
+    lineHeight: 18,
+  },
+  detailMuted: {
+    color: COLORS.textMuted,
+    fontSize: FONT_SIZE.xs,
+  },
+  tagsWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginTop: 2,
+  },
+  bonusTag: {
+    backgroundColor: COLORS.primaryMuted,
+    borderWidth: 1,
+    borderColor: COLORS.primary,
+    borderRadius: RADIUS.sm,
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: 3,
+  },
+  bonusTagText: {
+    color: COLORS.primaryLight,
+    fontSize: FONT_SIZE.xs,
+    fontWeight: '700',
+  },
+  infoTag: {
+    backgroundColor: COLORS.card,
+    borderWidth: 1,
+    borderColor: COLORS.borderLight,
+    borderRadius: RADIUS.sm,
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: 3,
+  },
+  infoTagText: {
+    color: COLORS.textPrimary,
+    fontSize: FONT_SIZE.xs,
   },
   errorBanner: {
     flexDirection: 'row',
