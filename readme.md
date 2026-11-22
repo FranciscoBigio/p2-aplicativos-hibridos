@@ -1,11 +1,26 @@
-# D&D 5e — Ficha, Grimório e Bestiário (`v1.4.2`)
+# D&D 5e — Ficha, Grimório e Bestiário (`v1.4.4`)
 
 Aplicativo mobile híbrido **100% funcional** desenvolvido individualmente em **React Native + Expo** para criação, evolução e gerenciamento de fichas de personagens, consulta de compêndio, rolagem de dados poliedrais (e rolagens imediatas em combate) e bestiário completo de **Dungeons & Dragons 5ª Edição**.
 
-- **Versão atual:** `v1.4.2`
+- **Versão atual:** `v1.4.4`
 - **Repositório:** https://github.com/FranciscoBigio/p2-aplicativos-hibridos.git
+- **Download do APK (Android):** https://expo.dev/accounts/franciscobigios-team/projects/p2-aplicativos-hibridos/builds/481bc7fa-bb4f-4b75-a515-343455215b06
 - **Branch principal:** `main`
 - **Versionamento:** SemVer (`vMAJOR.MINOR.PATCH`) + Conventional Commits no imperativo
+
+---
+
+## Download e Instalação do APK (Android)
+
+Você pode instalar o aplicativo diretamente em qualquer celular **Android** sem precisar rodar o servidor local no PC:
+
+1. Acesse o link oficial do build no Expo pelo celular:
+   👉 **https://expo.dev/accounts/franciscobigios-team/projects/p2-aplicativos-hibridos/builds/481bc7fa-bb4f-4b75-a515-343455215b06**
+2. Toque em **Install / Download** para baixar o arquivo `.apk`.
+3. Ao abrir o `.apk`, caso o Android solicite:
+   - Permita **"Instalar apps desconhecidos"** para o navegador.
+   - Se o Google Play Protect exibir aviso de app não reconhecido, toque em **"Mais detalhes" → "Instalar assim mesmo"**.
+4. Abra o aplicativo **D&D 5e Grimório** e toque em **"Entrar com Conta Demo"** (ou crie uma nova conta local) para testar imediatamente!
 
 ---
 
@@ -124,6 +139,9 @@ eas.json                        # Configuração de perfis EAS Build (developmen
 - **`v1.3.1`**: Configuração do **EAS Build** (`eas.json`) e `expo-dev-client` para builds Android de desenvolvimento e preview.
 - **`v1.4.0`**: Padronização da aba de magias da ficha com modal **"Aprender Magia"** e agrupamento por nível, ordem alfabética, filtro por classe e seções recolhíveis tanto nas magias conhecidas quanto nas disponíveis.
 - **`v1.4.1`**: Correção da montagem inicial do `<Stack>` raiz (`useRootNavigationState`) no Android nativo para o Expo Dev Build.
+- **`v1.4.2`**: Atualização completa da documentação no `README`.
+- **`v1.4.3`**: Correção de SafeArea inferior no Android (botões de navegação do sistema) e ajuste de escala compacta para telas menores.
+- **`v1.4.4`**: Publicação do link oficial de download/instalação do APK Android (`preview` EAS Build) no `README`.
 
 ---
 
